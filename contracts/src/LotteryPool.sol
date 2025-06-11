@@ -19,6 +19,7 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
     uint32 public callbackGasLimit = 100000;
     uint16 public requestConfirmations = 3;
     uint32 public numWords = 1;
+    uint256 public ticketPurchaseCost;
 
     // Chainlink Automation
     uint256 public lastTimeStamp;
@@ -26,6 +27,7 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
 
     // Yield Protocol (Aave)
     IERC20 public usdc;
+    IERC20 public aUsdc;
     address public aaveLendingPool;
 
     // Lottery State
@@ -53,12 +55,20 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
     /// @param amount The total amount auto-compounded
     event AutoCompounded(uint256 amount);
 
+
+    /// ERRORS
+    error InsufficientETH();
+    error InsufficientUSDC();
+    error AaveDepositFailed();
+    error InvalidAmount();
+
     /// @notice Initializes the LotteryPool contract
     /// @param _vrfCoordinator The address of the Chainlink VRF Coordinator
     /// @param _keyHash The key hash for Chainlink VRF
     /// @param _subscriptionId The subscription ID for Chainlink VRF
     /// @param _usdc The address of the USDC token contract
     /// @param _aaveLendingPool The address of the Aave lending pool
+    /// @param _aUsdc The address of the aUSDC token contract
     /// @param _interval The interval (in seconds) between lottery rounds
     constructor(
         address _vrfCoordinator,
@@ -66,22 +76,28 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
         uint64 _subscriptionId,
         address _usdc,
         address _aaveLendingPool,
-        uint256 _interval
+        address _aUsdc,
+        uint256 _interval,
+        uint256 _ticketPurchaseCost
     ) VRFConsumerBaseV2(_vrfCoordinator) {
         vrfCoordinator = VRFCoordinatorV2Interface(_vrfCoordinator);
         keyHash = _keyHash;
         subscriptionId = _subscriptionId;
         usdc = IERC20(_usdc);
+        aUsdc = IERC20(_aUsdc);
         aaveLendingPool = _aaveLendingPool;
         interval = _interval;
         lastTimeStamp = block.timestamp;
+        ticketPurchaseCost = _ticketPurchaseCost;
     }
 
     /// @notice Stake USDC to enter the lottery
     /// @dev Transfers USDC from the user, deposits into Aave, and issues a lottery ticket
     /// @param amount The amount of USDC to stake
     function stake(uint256 amount) external nonReentrant {
+        require(amount >= ticketPurchaseCost, "Amount must be >= ticket cost");
         require(amount > 0, "Amount must be > 0");
+        // Transfer USDC from user to contract
         usdc.transferFrom(msg.sender, address(this), amount);
         tickets.push(Ticket(msg.sender, amount));
         userStakes[msg.sender] += amount;
@@ -89,7 +105,7 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
         // Deposit into Aave for yield
         usdc.approve(aaveLendingPool, amount);
         (bool success, ) = aaveLendingPool.call(
-            abi.encodeWithSignature("deposit(address,uint256,address,uint16)", 
+            abi.encodeWithSignature("supply(address,uint256,address,uint16)", 
             address(usdc), amount, address(this), 0)
         );
         require(success, "Aave deposit failed");
@@ -116,7 +132,7 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
     }
 
     /// @notice Requests a random winner from Chainlink VRF
-    /// @dev Internal function to request random words
+    /// @dev Internal function to request random words from Chainlink VRF
     function requestRandomWinner() internal {
         vrfCoordinator.requestRandomWords(
             keyHash,
@@ -156,4 +172,83 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
             total += tickets[i].amount;
         }
     }
+
+    /// @notice Withdraws USDC from Aave to a specified address
+    /// @dev Calls Aave's withdraw function
+    /// @param amount The amount of USDC to withdraw
+    /// @param to The address to receive the withdrawn USDC
+    function withdrawFromAave(uint256 amount, address to) external  {
+        // Withdraw USDC from Aave to the specified address
+        (bool success, ) = aaveLendingPool.call(
+            abi.encodeWithSignature(
+                "withdraw(address,uint256,address)",
+                address(usdc),
+                amount,
+                to
+            )
+        );
+        require(success, "Aave withdraw failed");
+    }
+
+    /// @notice Withdraws only the accrued interest (yield) from Aave to a specified address
+    /// @dev Calculates interest as aUSDC balance minus total staked, then withdraws that amount
+    /// @param to The address to receive the withdrawn interest
+    function withdrawInterest(address to) external {
+        uint256 totalStaked = getTotalStaked();
+        uint256 currentBalance = aUsdc.balanceOf(address(this)); // <-- get aUSDC balance
+        require(currentBalance > totalStaked, "No interest accrued");
+        uint256 interest = currentBalance - totalStaked;
+
+        (bool success, ) = aaveLendingPool.call(
+            abi.encodeWithSignature(
+                "withdraw(address,uint256,address)",
+                address(usdc),
+                interest,
+                to
+            )
+        );
+        require(success, "Aave withdraw failed");
+    }
+
+    /// @notice Allows a user to withdraw all their tickets and receive their staked USDC back
+    /// @dev Removes all tickets for msg.sender, updates userStakes, and withdraws from Aave
+    /// @dev This function is non-reentrant to prevent re-entrancy attacks
+    /// @dev Requires that the user has tickets to withdraw
+    /// @dev Transfers the total amount of tickets staked back to the user
+    function withdrawAllUsersTickets() external nonReentrant {
+        uint256 refundAmount = 0;
+        uint256 i = 0;
+
+        // Remove all tickets for msg.sender and sum their amounts
+        while (i < tickets.length) {
+            if (tickets[i].user == msg.sender) {
+                refundAmount += tickets[i].amount;
+
+                // Remove ticket by swapping with the last and popping
+                tickets[i] = tickets[tickets.length - 1];
+                tickets.pop();
+            } else {
+                i++;
+            }
+        }
+
+        require(refundAmount > 0, "No tickets to withdraw");
+
+        // Update userStakes
+        userStakes[msg.sender] = 0;
+
+        // Withdraw from Aave and transfer to user
+        (bool success, ) = aaveLendingPool.call(
+            abi.encodeWithSignature(
+                "withdraw(address,uint256,address)",
+                address(usdc),
+                refundAmount,
+                msg.sender
+            )
+        );
+        require(success, "Aave withdraw failed");
+
+    }
+
+
 }
