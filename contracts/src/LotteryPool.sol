@@ -1,40 +1,19 @@
-// Layout of Contract:
-// version
-// imports
-// errors
-// interfaces, libraries, contracts
-// Type declarations
-// State variables
-// Events
-// Modifiers
-// Functions
-
-// Layout of Functions:
-// constructor
-// receive function (if exists)
-// fallback function (if exists)
-// external
-// public
-// internal
-// private
-// internal & private view & pure functions
-// external & public view & pure functions
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.29;
 
-import { VRFConsumerBaseV2 } from "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBaseV2.sol";
-import {VRFCoordinatorV2Interface} from "@chainlink/contracts/src/v0.8/vrf/interfaces/VRFCoordinatorV2Interface.sol";
+import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
+import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 
 /// @title No-Loss Yield Lottery Pool
 /// @author Tebbo
 /// @notice This contract allows users to stake USDC into a lottery pool, where yield is generated via Aave and distributed to a randomly selected winner each round.
 /// @dev Integrates Chainlink VRF for randomness and Chainlink Automation for round management. Yield is generated using Aave protocol.
-contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, ReentrancyGuard {
-
+contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, ReentrancyGuard, Pausable {
+    
     ///////////////////////////////////
     ///           ERRORS            ///
     ///////////////////////////////////
@@ -54,9 +33,9 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
     ////////////////////////////////////
 
     // Chainlink VRF
-    VRFCoordinatorV2Interface public vrfCoordinator;
+    // VRFCoordinatorV2Interface public vrfCoordinator;
     bytes32 public keyHash;
-    uint64 public subscriptionId;
+    uint256 public subscriptionId;
     uint32 public callbackGasLimit = 100000;
     uint16 public requestConfirmations = 3;
     uint32 public numWords = 1;
@@ -83,6 +62,11 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
     uint256 public currentRound;
     uint256 public totalYieldGenerated;
 
+    // Platform Fee
+    address public platformFeeRecipient;
+    uint256 public constant FEE_BPS = 100; // 1% = 100 basis points (BPS)
+    uint256 public constant BPS_DENOMINATOR = 10000;
+
     ///////////////////////////////////
     ///           EVENTS            ///
     ///////////////////////////////////
@@ -101,30 +85,33 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
     /// @param amount The total amount auto-compounded
     event AutoCompounded(uint256 amount);
 
+    /// @notice Emitted when a user is refunded in an emergency
+    event EmergencyRefund(address indexed user, uint256 amount);
 
     ///////////////////////////////////
     ///          FUNCTIONS          ///
     ///////////////////////////////////
 
     /// @notice Initializes the LotteryPool contract
-    /// @param _vrfCoordinator The address of the Chainlink VRF Coordinator
+    // / @param _vrfCoordinator The address of the Chainlink VRF Coordinator
     /// @param _keyHash The key hash for Chainlink VRF
     /// @param _subscriptionId The subscription ID for Chainlink VRF
     /// @param _usdc The address of the USDC token contract
     /// @param _aaveLendingPool The address of the Aave lending pool
     /// @param _aUsdc The address of the aUSDC token contract
     /// @param _interval The interval (in seconds) between lottery rounds
+    /// @param _platformFeeRecipient The address of the platform fee recipient
     constructor(
-        address _vrfCoordinator,
+        // address _vrfCoordinator,
         bytes32 _keyHash,
-        uint64 _subscriptionId,
+        uint256 _subscriptionId,
         address _usdc,
         address _aaveLendingPool,
         address _aUsdc,
         uint256 _interval,
-        uint256 _ticketPurchaseCost
-    ) VRFConsumerBaseV2(_vrfCoordinator) {
-        vrfCoordinator = VRFCoordinatorV2Interface(_vrfCoordinator);
+        uint256 _ticketPurchaseCost,
+        address _platformFeeRecipient
+    )  VRFConsumerBaseV2Plus(0x9DdfaCa8183c41ad55329BdeeD9F6A8d53168B1B) {
         keyHash = _keyHash;
         subscriptionId = _subscriptionId;
         usdc = IERC20(_usdc);
@@ -133,13 +120,26 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
         interval = _interval;
         lastTimeStamp = block.timestamp;
         ticketPurchaseCost = _ticketPurchaseCost;
+        platformFeeRecipient = _platformFeeRecipient;
+    }
+
+    /// @notice Pauses the contract, disabling staking and round execution
+    /// @dev Only callable by the contract owner. Use in emergencies or for maintenance.
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /// @notice Unpauses the contract, enabling staking and round execution
+    /// @dev Only callable by the contract owner.
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     /// @notice Stake USDC to enter the lottery
     /// @dev Transfers USDC from the user, deposits into Aave, and issues a lottery ticket.
     /// If purchased after the entry cutoff, the ticket is not eligible for the next round but is auto-compounded for all subsequent rounds.
     /// @param amount The amount of USDC to stake (must be >= ticketPurchaseCost)
-    function stake(uint256 amount) external payable nonReentrant {
+    function stake(uint256 amount) external payable nonReentrant whenNotPaused {
         if (amount == 0) revert Lottery_InvalidAmount();
         if (amount < ticketPurchaseCost) revert Lottery_InsufficientUSDC();
 
@@ -176,7 +176,7 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
     /// @notice Chainlink Automation: Triggers a new lottery round
     /// @dev Requests a random winner if the interval has passed
     /// @param performData Not used
-    function performUpkeep(bytes calldata performData) external override {
+    function performUpkeep(bytes calldata performData) external override whenNotPaused {
         if ((block.timestamp - lastTimeStamp) < interval) revert Lottery_IntervalNotPassed();
         if (tickets.length == 0) revert Lottery_NoTicketsInRound();
         lastTimeStamp = block.timestamp;
@@ -186,12 +186,17 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
     /// @notice Requests a random winner from Chainlink VRF
     /// @dev Internal function to request random words from Chainlink VRF
     function requestRandomWinner() internal {
-        vrfCoordinator.requestRandomWords(
-            keyHash,
-            subscriptionId,
-            requestConfirmations,
-            callbackGasLimit,
-            numWords
+        s_vrfCoordinator.requestRandomWords(
+            VRFV2PlusClient.RandomWordsRequest({
+                keyHash: keyHash,
+                subId: subscriptionId,
+                requestConfirmations: requestConfirmations,
+                callbackGasLimit: callbackGasLimit,
+                numWords: numWords,
+                extraArgs: VRFV2PlusClient._argsToBytes(
+                    VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
+                )
+            })
         );
     }
 
@@ -199,7 +204,7 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
     /// @dev Called by Chainlink VRF with random words. Only tickets eligible for the current round are considered.
     /// @param requestId The request ID (unused)
     /// @param randomWords The array of random words provided by Chainlink VRF
-    function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override {
+    function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
         // Collect indices of eligible tickets for this round
         uint256 eligibleCount = 0;
         for (uint256 i = 0; i < tickets.length; i++) {
@@ -231,19 +236,35 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
         uint256 yield = currentBalance - totalStaked;
         totalYieldGenerated += yield;
 
-        // Withdraw yield from Aave and send to winner
-        (bool success, ) = aaveLendingPool.call(
+        // Calculate platform fee and winner amount
+        uint256 fee = (yield * FEE_BPS) / BPS_DENOMINATOR;
+        uint256 winnerAmount = yield - fee;
+
+        // Withdraw fee from Aave and send to platform
+        if (fee > 0) {
+            (bool feeSuccess, ) = aaveLendingPool.call(
+                abi.encodeWithSignature(
+                    "withdraw(address,uint256,address)",
+                    address(usdc),
+                    fee,
+                    platformFeeRecipient
+                )
+            );
+            require(feeSuccess, "Aave withdraw fee failed");
+        }
+
+        // Withdraw winner amount from Aave and send to winner
+        (bool winnerSuccess, ) = aaveLendingPool.call(
             abi.encodeWithSignature(
                 "withdraw(address,uint256,address)",
                 address(usdc),
-                yield,
+                winnerAmount,
                 winner
             )
         );
-        if (!success) revert Lottery_AaveWithdrawFailed();
-        emit WinnerSelected(winner, yield);
+        if (!winnerSuccess) revert Lottery_AaveWithdrawFailed();
 
-        // Auto-compound losers (re-stake in next round)
+        emit WinnerSelected(winner, winnerAmount);
         emit AutoCompounded(totalStaked);
 
         currentRound++; // Move to the next round
@@ -253,7 +274,9 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
     /// @notice Withdraws only the accrued interest (yield) from Aave to a specified address
     /// @dev Calculates interest as aUSDC balance minus total staked, then withdraws that amount
     /// @param to The address to receive the withdrawn interest
-    function withdrawInterest(address to) external {
+    /// @dev This function is only callable by the owner and is a failsafe if anything happens to the contract and allows the contract
+    /// owner to withdraw the interest to a safe address
+    function withdrawInterest(address to) external onlyOwner {
         uint256 totalStaked = getTotalStaked();
         uint256 currentBalance = aUsdc.balanceOf(address(this));
         if (currentBalance <= totalStaked) revert Lottery_NoInterestAccrued();
@@ -309,6 +332,42 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
 
     }
 
+    /// @notice Allows a user to withdraw their principal in an emergency if the contract is paused
+    /// @dev Can only be called when the contract is paused
+    function emergencyWithdraw() external whenPaused nonReentrant {
+        uint256 refundAmount = 0;
+        uint256 i = 0;
+
+        // Remove all tickets for msg.sender and sum their amounts
+        while (i < tickets.length) {
+            if (tickets[i].user == msg.sender) {
+                refundAmount += tickets[i].amount;
+                // Remove ticket by swapping with the last and popping
+                tickets[i] = tickets[tickets.length - 1];
+                tickets.pop();
+            } else {
+                i++;
+            }
+        }
+
+        require(refundAmount > 0, "No tickets to withdraw");
+
+        // Update userStakes
+        userStakes[msg.sender] = 0;
+
+        // Withdraw from Aave and transfer to user
+        (bool success, ) = aaveLendingPool.call(
+            abi.encodeWithSignature(
+                "withdraw(address,uint256,address)",
+                address(usdc),
+                refundAmount,
+                msg.sender
+            )
+        );
+        require(success, "Aave withdraw failed");
+
+        emit EmergencyRefund(msg.sender, refundAmount);
+    }
 
     ///////////////////////////////////
     ///           GETTERS           ///
@@ -329,5 +388,6 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
     function getTicketCount() external view returns (uint256) {
         return tickets.length;
     }
+
 
 }

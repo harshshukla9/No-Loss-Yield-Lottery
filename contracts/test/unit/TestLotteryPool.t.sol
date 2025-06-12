@@ -25,7 +25,7 @@ contract TestLotteryPool is Test {
         vrfCoordinator = new MockVRFCoordinatorV2();
         // Deploy LotteryPool with mock addresses and dummy params
         lotteryPool = new LotteryPool(
-            address(vrfCoordinator),
+            // address(vrfCoordinator),
             bytes32(0), // keyHash
             1, // subscriptionId
             address(usdc),
