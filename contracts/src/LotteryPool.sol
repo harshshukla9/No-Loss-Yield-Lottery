@@ -93,7 +93,6 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     ///////////////////////////////////
 
     /// @notice Initializes the LotteryPool contract
-    // / @param _vrfCoordinator The address of the Chainlink VRF Coordinator
     /// @param _keyHash The key hash for Chainlink VRF
     /// @param _subscriptionId The subscription ID for Chainlink VRF
     /// @param _usdc The address of the USDC token contract
@@ -102,7 +101,6 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     /// @param _interval The interval (in seconds) between lottery rounds
     /// @param _platformFeeRecipient The address of the platform fee recipient
     constructor(
-        // address _vrfCoordinator,
         bytes32 _keyHash,
         uint256 _subscriptionId,
         address _usdc,
