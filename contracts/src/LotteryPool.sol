@@ -208,7 +208,6 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
             }
         }
         // If no eligible tickets, revert
-        // This ensures that we only select a winner if there are eligible tickets
         if (eligibleCount == 0) revert Lottery_NoEligibleTickets();
 
         // Build array of eligible ticket indices
@@ -225,14 +224,23 @@ contract LotteryPool is VRFConsumerBaseV2, AutomationCompatibleInterface, Reentr
         uint256 winnerTicketIndex = eligibleIndices[winnerArrayIndex];
         address winner = tickets[winnerTicketIndex].user;
 
-        // Calculate yield (simplified: assumes Aave yield accrues to contract)
-        uint256 currentBalance = usdc.balanceOf(address(this));
+        // Calculate yield as aUSDC balance minus total staked
         uint256 totalStaked = getTotalStaked();
+        uint256 currentBalance = aUsdc.balanceOf(address(this));
+        if (currentBalance <= totalStaked) revert Lottery_NoInterestAccrued();
         uint256 yield = currentBalance - totalStaked;
         totalYieldGenerated += yield;
 
-        // Send yield to winner
-        usdc.transfer(winner, yield);
+        // Withdraw yield from Aave and send to winner
+        (bool success, ) = aaveLendingPool.call(
+            abi.encodeWithSignature(
+                "withdraw(address,uint256,address)",
+                address(usdc),
+                yield,
+                winner
+            )
+        );
+        if (!success) revert Lottery_AaveWithdrawFailed();
         emit WinnerSelected(winner, yield);
 
         // Auto-compound losers (re-stake in next round)

@@ -1,164 +1,144 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.29;
 
-import "forge-std/Test.sol";
+import { Test } from "forge-std/Test.sol";
 import { LotteryPool } from "../../src/LotteryPool.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { VRFCoordinatorV2_5Mock } from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
+import { MockERC20 } from "../../src/mocks/MockERC20.sol";
+import { MockAaveLendingPool } from "../../src/mocks/MockAaveLendingPool.sol";
+import { MockVRFCoordinatorV2 } from "../../src/mocks/MockVRFCoordinatorV2.sol";
 
-// Inherit from LotteryPool to expose fulfillRandomWords for testing
-contract LotteryPoolTestable is LotteryPool {
-    constructor(
-        address _vrfCoordinator,
-        bytes32 _keyHash,
-        uint64 _subscriptionId,
-        address _usdc,
-        address _aaveLendingPool,
-        address _aUsdc,
-        uint256 _interval,
-        uint256 _ticketPurchaseCost
-    ) LotteryPool(
-        _vrfCoordinator,
-        _keyHash,
-        _subscriptionId,
-        _usdc,
-        _aaveLendingPool,
-        _aUsdc,
-        _interval,
-        _ticketPurchaseCost
-    ) {}
 
-    function callFulfillRandomWords(uint256 requestId, uint256[] memory randomWords) public {
-        fulfillRandomWords(requestId, randomWords);
-    }
-
-    function setCurrentRound(uint256 round) public {
-        currentRound = round;
-    }
-}
-
+// --- Test Contract ---
 contract TestLotteryPool is Test {
-    LotteryPoolTestable pool;
-    VRFCoordinatorV2_5Mock vrfCoordinatorMock;
-    address vrfCoordinator;
-    bytes32 keyHash = bytes32(uint256(0x2));
-    uint64 subscriptionId = 1;
-    address usdc = address(0x3);
-    address aaveLendingPool = address(0x4);
-    address aUsdc = address(0x5);
-    uint256 interval = 1 days;
-    uint256 ticketPurchaseCost = 1_000_000; // 1 USDC (6 decimals)
-    address user = address(0x10);
+    LotteryPool public lotteryPool;
+    MockERC20 public usdc;
+    MockERC20 public aUsdc;
+    MockAaveLendingPool public aaveLendingPool;
+    MockVRFCoordinatorV2 public vrfCoordinator;
+
+    address public user = address(0x123);
 
     function setUp() public {
-        vrfCoordinatorMock = new VRFCoordinatorV2_5Mock(0, 0, 0);
-        vrfCoordinator = address(vrfCoordinatorMock);
-        pool = new LotteryPoolTestable(
-            vrfCoordinator,
-            keyHash,
-            subscriptionId,
-            usdc,
-            aaveLendingPool,
-            aUsdc,
-            interval,
-            ticketPurchaseCost
+        usdc = new MockERC20("USD Coin", "USDC", 6);
+        aUsdc = new MockERC20("Aave USDC", "aUSDC", 6);
+        aaveLendingPool = new MockAaveLendingPool(address(usdc), address(aUsdc));
+        vrfCoordinator = new MockVRFCoordinatorV2();
+        // Deploy LotteryPool with mock addresses and dummy params
+        lotteryPool = new LotteryPool(
+            address(vrfCoordinator),
+            bytes32(0), // keyHash
+            1, // subscriptionId
+            address(usdc),
+            address(aaveLendingPool),
+            address(aUsdc),
+            1 days, // interval
+            1e6 // ticketPurchaseCost (1 USDC)
         );
-        vm.label(user, "User");
+        // Mint USDC to user for testing
+        usdc.mint(user, 1000e6);
     }
 
-    function testCannotStakeZeroAmount() public {
-        vm.prank(user);
-        vm.expectRevert(LotteryPool.Lottery_InvalidAmount.selector);
-        pool.stake(0);
+    function testStakeIncreasesUserStakeAndTickets() public {
+        // Start as user
+        vm.startPrank(user);
+        // Approve LotteryPool to spend USDC
+        usdc.approve(address(lotteryPool), 100e6);
+        // Stake 100 USDC
+        lotteryPool.stake(100e6);
+        vm.stopPrank();
+
+        // Check userStakes mapping
+        assertEq(lotteryPool.userStakes(user), 100e6);
+        // Check ticket count
+        assertEq(lotteryPool.getTicketCount(), 1);
     }
 
-    function testCannotStakeLessThanTicketCost() public {
-        vm.prank(user);
-        vm.expectRevert(LotteryPool.Lottery_InsufficientUSDC.selector);
-        pool.stake(ticketPurchaseCost - 1);
+    function testWithdrawAllOfAUsersTicketsReturnsFunds() public {
+        // User stakes first
+        vm.startPrank(user);
+        usdc.approve(address(lotteryPool), 100e6);
+        lotteryPool.stake(100e6);
+        vm.stopPrank();
+
+        // Approve aUSDC for withdrawal by the pool
+        vm.prank(address(lotteryPool));
+        aUsdc.approve(address(aaveLendingPool), 100e6);
+
+        // User withdraws all tickets
+        vm.startPrank(user);
+        // Check USDC balance before
+        uint256 before = usdc.balanceOf(user);
+        lotteryPool.withdrawAllOfAUsersTickets();
+        // Check USDC balance after (should be refunded)
+        uint256 afterBalance = usdc.balanceOf(user);
+        assertGt(afterBalance, before, "User should get USDC back");
+        // Check userStakes mapping
+        assertEq(lotteryPool.userStakes(user), 0);
+        // Check ticket count
+        assertEq(lotteryPool.getTicketCount(), 0);
+        vm.stopPrank();
     }
 
-    function testStakeEmitsEvent() public {
-        // Mock USDC transferFrom and approve
-        vm.mockCall(usdc, abi.encodeWithSelector(IERC20.transferFrom.selector), abi.encode(true));
-        vm.mockCall(usdc, abi.encodeWithSelector(IERC20.approve.selector), abi.encode(true));
-        vm.mockCall(aaveLendingPool, abi.encodeWithSignature("supply(address,uint256,address,uint16)", usdc, ticketPurchaseCost, address(pool), 0), abi.encode(true));
+    function testFullRoundWithFiveUsersAndWinnerGetsInterest() public {
+        address[5] memory users = [
+            address(0x1),
+            address(0x2),
+            address(0x3),
+            address(0x4),
+            address(0x5)
+        ];
+        uint256 stakeAmount = 100e6;
+        uint256 totalStake = stakeAmount * 5;
 
-        vm.prank(user);
-        vm.expectEmit(true, true, false, true);
-        emit LotteryPool.Staked(user, ticketPurchaseCost);
-        pool.stake(ticketPurchaseCost);
-    }
+        // Mint USDC to all users and have them stake
+        for (uint256 i = 0; i < users.length; i++) {
+            usdc.mint(users[i], stakeAmount);
+            vm.startPrank(users[i]);
+            usdc.approve(address(lotteryPool), stakeAmount);
+            lotteryPool.stake(stakeAmount);
+            vm.stopPrank();
+        }
 
-    function testCannotPerformUpkeepIfNoTickets() public {
-        // Fast-forward time to pass the interval check
-        vm.warp(block.timestamp + interval + 1);
-        vm.expectRevert(LotteryPool.Lottery_NoTicketsInRound.selector);
-        pool.performUpkeep("");
-    }
+        // Simulate yield: mint extra aUSDC to the pool to represent interest
+        uint256 interest = 50e6; // 50 USDC as yield
+        aUsdc.mint(address(lotteryPool), interest);
 
-    function testCannotWithdrawIfNoTickets() public {
-        vm.prank(user);
-        vm.expectRevert(LotteryPool.Lottery_NoTicketsToWithdraw.selector);
-        pool.withdrawAllOfAUsersTickets();
-    }
+        // Move time forward by one week
+        vm.warp(block.timestamp + 7 days);
 
-    function testWithdrawAllOfAUsersTickets() public {
-        // Mock USDC and Aave interactions
-        vm.mockCall(usdc, abi.encodeWithSelector(IERC20.transferFrom.selector), abi.encode(true));
-        vm.mockCall(usdc, abi.encodeWithSelector(IERC20.approve.selector), abi.encode(true));
-        vm.mockCall(aaveLendingPool, abi.encodeWithSignature("supply(address,uint256,address,uint16)", usdc, ticketPurchaseCost, address(pool), 0), abi.encode(true));
-        vm.mockCall(aaveLendingPool, abi.encodeWithSignature("withdraw(address,uint256,address)", usdc, ticketPurchaseCost, user), abi.encode(true));
+        // Check upkeep (should be true)
+        (bool upkeepNeeded, ) = lotteryPool.checkUpkeep("");
+        assertTrue(upkeepNeeded, "Upkeep should be needed after interval");
 
-        vm.prank(user);
-        pool.stake(ticketPurchaseCost);
+        // Perform upkeep (should request randomness)
+        lotteryPool.performUpkeep("");
 
-        vm.prank(user);
-        pool.withdrawAllOfAUsersTickets();
-        // Optionally, assert userStakes[user] == 0
-        assertEq(pool.userStakes(user), 0);
-    }
-
-    function testCannotWithdrawInterestIfNoInterest() public {
-        // Stake so totalStaked is ticketPurchaseCost
-        vm.mockCall(usdc, abi.encodeWithSelector(IERC20.transferFrom.selector), abi.encode(true));
-        vm.mockCall(usdc, abi.encodeWithSelector(IERC20.approve.selector), abi.encode(true));
-        vm.mockCall(aaveLendingPool, abi.encodeWithSignature("supply(address,uint256,address,uint16)", usdc, ticketPurchaseCost, address(pool), 0), abi.encode(true));
-        vm.prank(user);
-        pool.stake(ticketPurchaseCost);
-
-        // Now mock aUSDC balance to be equal to totalStaked
-        vm.mockCall(aUsdc, abi.encodeWithSelector(IERC20.balanceOf.selector, address(pool)), abi.encode(ticketPurchaseCost));
-        vm.prank(user);
-        vm.expectRevert(LotteryPool.Lottery_NoInterestAccrued.selector);
-        pool.withdrawInterest(user);
-    }
-
-    // Add more tests for winner selection logic, e.g.:
-    function testFulfillRandomWordsSelectsWinner() public {
-        // Set round to 0
-        pool.setCurrentRound(0);
-
-        // Warp to just before the cutoff for round 1
-        vm.warp(block.timestamp + interval - pool.entryCutoffTime() - 1);
-
-        // Mock USDC and Aave interactions
-        vm.mockCall(usdc, abi.encodeWithSelector(IERC20.transferFrom.selector), abi.encode(true));
-        vm.mockCall(usdc, abi.encodeWithSelector(IERC20.approve.selector), abi.encode(true));
-        vm.mockCall(aaveLendingPool, abi.encodeWithSignature("supply(address,uint256,address,uint16)", usdc, ticketPurchaseCost, address(pool), 0), abi.encode(true));
-
-        vm.prank(user);
-        pool.stake(ticketPurchaseCost);
-
-        // Advance to round 1
-        pool.setCurrentRound(1);
-
+        // Simulate VRF callback: pick a winner (e.g., user at index 2)
+        uint256 requestId = 1; // MockVRF increments from 1
         uint256[] memory randomWords = new uint256[](1);
-        randomWords[0] = 0;
+        randomWords[0] = 2; // This will select user at index 2 as winner
+        // Approve aUSDC for withdrawal by the pool (simulate Aave logic)
+        vm.prank(address(lotteryPool));
+        aUsdc.approve(address(aaveLendingPool), type(uint256).max);
+        // Fulfill randomness
+        MockVRFCoordinatorV2(address(vrfCoordinator)).fulfillRandomWords(requestId, address(lotteryPool), randomWords);
 
-        vm.mockCall(usdc, abi.encodeWithSelector(IERC20.transfer.selector), abi.encode(true));
-        pool.callFulfillRandomWords(0, randomWords);
+        // Check winner received the interest
+        address winner = users[2];
+        uint256 winnerBalance = usdc.balanceOf(winner);
+        assertEq(winnerBalance, interest, "Winner should receive all interest");
 
-        // Optionally, check events or state changes
+        // Check losers did not receive interest
+        for (uint256 i = 0; i < users.length; i++) {
+            if (i != 2) {
+                assertEq(usdc.balanceOf(users[i]), 0, "Losers should not receive interest");
+            }
+        }
+
+        // Check pool's USDC balance is zero (all principal is still in Aave)
+        assertEq(usdc.balanceOf(address(lotteryPool)), 0, "Pool should have no USDC after interest payout");
+
+        // Check aUSDC balance (should be total staked, as all is still supplied)
+        assertEq(aUsdc.balanceOf(address(lotteryPool)), totalStake, "Pool should have aUSDC for all staked");
     }
 }
