@@ -18,7 +18,7 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     ///           ERRORS            ///
     ///////////////////////////////////
 
-    error Lottery_InsufficientUSDC();
+    error Lottery_InsufficientLINK();
     error Lottery_AaveDepositFailed();
     error Lottery_InvalidAmount();
     error Lottery_IntervalNotPassed();
@@ -49,6 +49,8 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     // Yield Protocol (Aave)
     IERC20 public usdc;
     IERC20 public aUsdc;
+    IERC20 public link;
+    IERC20 public aEthLink;
     address public aaveLendingPool;
 
     // Lottery State
@@ -95,26 +97,30 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     /// @notice Initializes the LotteryPool contract
     /// @param _keyHash The key hash for Chainlink VRF
     /// @param _subscriptionId The subscription ID for Chainlink VRF
-    /// @param _usdc The address of the USDC token contract
+    // / @param _usdc The address of the USDC token contract
+    /// @param _link The address of the LINK token contract
     /// @param _aaveLendingPool The address of the Aave lending pool
-    /// @param _aUsdc The address of the aUSDC token contract
+    // / @param _aUsdc The address of the aUSDC token contract
+    /// @param _aEthLink The address of the aEthLink token contract
     /// @param _interval The interval (in seconds) between lottery rounds
     /// @param _platformFeeRecipient The address of the platform fee recipient
     constructor(
         address _vrfCoordinator,
         bytes32 _keyHash,
         uint256 _subscriptionId,
-        address _usdc,
+        // address _usdc,
+        address _link,
         address _aaveLendingPool,
-        address _aUsdc,
+        // address _aUsdc,
+        address _aEthLink,
         uint256 _interval,
         uint256 _ticketPurchaseCost,
         address _platformFeeRecipient
     )  VRFConsumerBaseV2Plus(_vrfCoordinator) {
         keyHash = _keyHash;
         subscriptionId = _subscriptionId;
-        usdc = IERC20(_usdc);
-        aUsdc = IERC20(_aUsdc);
+        link = IERC20(_link);
+        aEthLink= IERC20(_aEthLink);
         aaveLendingPool = _aaveLendingPool;
         interval = _interval;
         lastTimeStamp = block.timestamp;
@@ -140,7 +146,7 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     /// @param amount The amount of USDC to stake (must be >= ticketPurchaseCost)
     function stake(uint256 amount) external payable nonReentrant whenNotPaused {
         if (amount == 0) revert Lottery_InvalidAmount();
-        if (amount < ticketPurchaseCost) revert Lottery_InsufficientUSDC();
+        if (amount < ticketPurchaseCost) revert Lottery_InsufficientLINK();
 
         uint256 ticketStartRound;
         if (block.timestamp < lastTimeStamp + interval - entryCutoffTime) {
@@ -149,14 +155,14 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
             ticketStartRound = currentRound + 2; // Eligible for the round after next
         }
 
-        usdc.transferFrom(msg.sender, address(this), amount);
+        link.transferFrom(msg.sender, address(this), amount);
         tickets.push(Ticket(msg.sender, amount, ticketStartRound));
         userStakes[msg.sender] += amount;
 
-        usdc.approve(aaveLendingPool, amount);
+        link.approve(aaveLendingPool, amount);
         (bool success, ) = aaveLendingPool.call(
             abi.encodeWithSignature("supply(address,uint256,address,uint16)", 
-            address(usdc), amount, address(this), 0)
+            address(link), amount, address(this), 0)
         );
         if (!success) revert Lottery_AaveDepositFailed();
 
@@ -230,7 +236,7 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
 
         // Calculate yield as aUSDC balance minus total staked
         uint256 totalStaked = getTotalStaked();
-        uint256 currentBalance = aUsdc.balanceOf(address(this));
+        uint256 currentBalance = aEthLink.balanceOf(address(this));
         if (currentBalance <= totalStaked) revert Lottery_NoInterestAccrued();
         uint256 yield = currentBalance - totalStaked;
         totalYieldGenerated += yield;
@@ -244,7 +250,7 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
             (bool feeSuccess, ) = aaveLendingPool.call(
                 abi.encodeWithSignature(
                     "withdraw(address,uint256,address)",
-                    address(usdc),
+                    address(link),
                     fee,
                     platformFeeRecipient
                 )
@@ -256,7 +262,7 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
         (bool winnerSuccess, ) = aaveLendingPool.call(
             abi.encodeWithSignature(
                 "withdraw(address,uint256,address)",
-                address(usdc),
+                address(link),
                 winnerAmount,
                 winner
             )
@@ -277,13 +283,13 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     /// owner to withdraw the interest to a safe address
     function withdrawInterest(address to) external onlyOwner {
         uint256 totalStaked = getTotalStaked();
-        uint256 currentBalance = aUsdc.balanceOf(address(this));
+        uint256 currentBalance = aEthLink.balanceOf(address(this));
         if (currentBalance <= totalStaked) revert Lottery_NoInterestAccrued();
         uint256 interest = currentBalance - totalStaked;
         (bool success, ) = aaveLendingPool.call(
             abi.encodeWithSignature(
                 "withdraw(address,uint256,address)",
-                address(usdc),
+                address(link),
                 interest,
                 to
             )
@@ -322,7 +328,7 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
         (bool success, ) = aaveLendingPool.call(
             abi.encodeWithSignature(
                 "withdraw(address,uint256,address)",
-                address(usdc),
+                address(link),
                 refundAmount,
                 msg.sender
             )
@@ -358,7 +364,7 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
         (bool success, ) = aaveLendingPool.call(
             abi.encodeWithSignature(
                 "withdraw(address,uint256,address)",
-                address(usdc),
+                address(link),
                 refundAmount,
                 msg.sender
             )
@@ -386,6 +392,12 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     /// @return The number of tickets
     function getTicketCount() external view returns (uint256) {
         return tickets.length;
+    }
+
+    /// @notice Returns the amount of aUSDC currently held by this contract (i.e., invested in Aave)
+    /// @return The aUSDC balance of this contract
+    function getAaveInvestmentBalance() external view returns (uint256) {
+        return aEthLink.balanceOf(address(this));
     }
 
 

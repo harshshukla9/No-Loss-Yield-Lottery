@@ -5,7 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
 import "../../src/LotteryPool.sol";
 
-// Minimal ERC20 mock for USDC/aUSDC
+// Minimal ERC20 mock for link/aEthLink
 contract ERC20Mock is IERC20, Test {
     string public name;
     string public symbol;
@@ -55,33 +55,33 @@ contract ERC20Mock is IERC20, Test {
 
 // Minimal Aave Lending Pool mock
 contract AaveLendingPoolMock {
-    ERC20Mock public usdc;
-    ERC20Mock public aUsdc;
+    ERC20Mock public link;
+    ERC20Mock public aEthLink;
 
-    constructor(address _usdc, address _aUsdc) {
-        usdc = ERC20Mock(_usdc);
-        aUsdc = ERC20Mock(_aUsdc);
+    constructor(address _link, address _aEthLink) {
+        link = ERC20Mock(_link);
+        aEthLink = ERC20Mock(_aEthLink);
     }
 
     function supply(address asset, uint256 amount, address onBehalfOf, uint16) external {
-        require(asset == address(usdc), "Only USDC");
-        usdc.transferFrom(msg.sender, address(this), amount);
-        aUsdc.mint(onBehalfOf, amount);
+        require(asset == address(link), "Only link");
+        link.transferFrom(msg.sender, address(this), amount);
+        aEthLink.mint(onBehalfOf, amount);
     }
 
     function withdraw(address asset, uint256 amount, address to) external returns (uint256) {
-        require(asset == address(usdc), "Only USDC");
-        // Burn aUSDC from msg.sender
-        aUsdc.burn(msg.sender, amount);
-        usdc.transfer(to, amount);
+        require(asset == address(link), "Only link");
+        // Burn aEthLink from msg.sender
+        aEthLink.burn(msg.sender, amount);
+        link.transfer(to, amount);
         return amount;
     }
 }
 
 contract TestLotteryPool is Test {
     VRFCoordinatorV2_5Mock vrfCoordinator;
-    ERC20Mock usdc;
-    ERC20Mock aUsdc;
+    ERC20Mock link;
+    ERC20Mock aEthLink;
     AaveLendingPoolMock aaveLendingPool;
     LotteryPool lottery;
 
@@ -93,9 +93,9 @@ contract TestLotteryPool is Test {
     function setUp() public {
         // Deploy mocks
         vrfCoordinator = new VRFCoordinatorV2_5Mock(1e17, 1e9, 1e18);
-        usdc = new ERC20Mock("USDC", "USDC", 6);
-        aUsdc = new ERC20Mock("aUSDC", "aUSDC", 6);
-        aaveLendingPool = new AaveLendingPoolMock(address(usdc), address(aUsdc));
+        link = new ERC20Mock("link", "link", 6);
+        aEthLink = new ERC20Mock("aEthLink", "aEthLink", 6);
+        aaveLendingPool = new AaveLendingPoolMock(address(link), address(aEthLink));
         // Create and fund subscription
         subId = vrfCoordinator.createSubscription();
         vrfCoordinator.fundSubscription(subId, 100e18);
@@ -105,31 +105,31 @@ contract TestLotteryPool is Test {
             address(vrfCoordinator),
             0x787d74caea10b2b357790d5b5247c2f63d1d91572a9846f780606e4d953677ae,
             subId,
-            address(usdc),
+            address(link),
             address(aaveLendingPool),
-            address(aUsdc),
+            address(aEthLink),
             1 days,
-            1e6, // ticket cost (1 USDC)
+            1e6, // ticket cost (1 link)
             owner
         );
 
         // Add consumer
         vrfCoordinator.addConsumer(subId, address(lottery));
 
-        // Mint USDC to users
-        usdc.mint(user1, 100e6);
-        usdc.mint(user2, 100e6);
+        // Mint link to users
+        link.mint(user1, 100e6);
+        link.mint(user2, 100e6);
 
-        // Approve lottery to spend USDC
+        // Approve lottery to spend link
         vm.prank(user1);
-        usdc.approve(address(lottery), type(uint256).max);
+        link.approve(address(lottery), type(uint256).max);
         vm.prank(user2);
-        usdc.approve(address(lottery), type(uint256).max);
+        link.approve(address(lottery), type(uint256).max);
     }
 
     function testStakeAndEnterLottery() public {
         vm.prank(user1);
-        lottery.stake(10e6); // 10 USDC
+        lottery.stake(10e6); // 10 link
 
         assertEq(lottery.getTicketCount(), 1);
         assertEq(lottery.userStakes(user1), 10e6);
@@ -143,8 +143,8 @@ contract TestLotteryPool is Test {
 
     function testCannotStakeBelowTicketCost() public {
         vm.prank(user1);
-        vm.expectRevert(LotteryPool.Lottery_InsufficientUSDC.selector);
-        lottery.stake(1e5); // 0.1 USDC
+        vm.expectRevert(LotteryPool.Lottery_InsufficientLINK.selector);
+        lottery.stake(1e5); // 0.1 link
     }
 
     function testPerformUpkeepAndWinnerSelection() public {
@@ -154,15 +154,15 @@ contract TestLotteryPool is Test {
         vm.prank(user2);
         lottery.stake(20e6);
 
-        // Simulate yield: mint aUSDC to the pool to represent yield
-        aUsdc.mint(address(lottery), 3e6); // 3 USDC yield
+        // Simulate yield: mint aEthLink to the pool to represent yield
+        aEthLink.mint(address(lottery), 3e6); // 3 link yield
 
         // Simulate time passing
         vm.warp(block.timestamp + 2 days);
 
         // Calculate expected values BEFORE fulfillment
         uint256 totalStaked = 10e6 + 20e6;
-        uint256 currentBalance = aUsdc.balanceOf(address(lottery));
+        uint256 currentBalance = aEthLink.balanceOf(address(lottery));
         uint256 yield = currentBalance - totalStaked; // should be 3e6
         uint256 fee = (yield * 100) / 10000; // 1% fee
         uint256 winnerAmount = yield - fee;
@@ -175,13 +175,13 @@ contract TestLotteryPool is Test {
 
         // Now check balances
         uint256 expectedWinnerBalance = 80e6 + winnerAmount;
-        console.log("user2 balance", usdc.balanceOf(user2));
+        console.log("user2 balance", link.balanceOf(user2));
         console.log("winnerAmount", winnerAmount);
         console.log("expectedWinnerBalance", expectedWinnerBalance);
-        assertEq(usdc.balanceOf(user2), expectedWinnerBalance);
+        assertEq(link.balanceOf(user2), expectedWinnerBalance);
 
-        // Check platform fee recipient's USDC balance increased by fee
-        assertEq(usdc.balanceOf(owner), fee);
+        // Check platform fee recipient's link balance increased by fee
+        assertEq(link.balanceOf(owner), fee);
 
         // Check round incremented
         assertEq(lottery.currentRound(), 3);
@@ -199,6 +199,24 @@ contract TestLotteryPool is Test {
         assertEq(lottery.getTicketCount(), 2);
     }
 
+    function testGetAaveInvestmentBalance() public {
+        // Stake for user1
+        vm.prank(user1);
+        lottery.stake(10e6); // 10 link
+
+        // The contract should have received 10 aEthLink
+        uint256 aEthLinkBalance = lottery.getAaveInvestmentBalance();
+        assertEq(aEthLinkBalance, 10e6);
+
+        // Stake for user2
+        vm.prank(user2);
+        lottery.stake(20e6); // 20 link
+
+        // The contract should now have 30 aEthLink
+        aEthLinkBalance = lottery.getAaveInvestmentBalance();
+        assertEq(aEthLinkBalance, 30e6);
+    }
+
     function testWithdrawAllOfAUsersTickets() public {
         // Stake for user1 and user2
         vm.prank(user1);
@@ -207,7 +225,7 @@ contract TestLotteryPool is Test {
         lottery.stake(20e6);
 
         // user1's balance after staking
-        uint256 user1BalanceAfterStake = usdc.balanceOf(user1);
+        uint256 user1BalanceAfterStake = link.balanceOf(user1);
         assertEq(user1BalanceAfterStake, 90e6);
 
         // Call withdrawAllOfAUsersTickets as user1
@@ -215,14 +233,14 @@ contract TestLotteryPool is Test {
         lottery.withdrawAllOfAUsersTickets();
 
         // user1's balance should be restored to initial (100e6)
-        assertEq(usdc.balanceOf(user1), 100e6);
+        assertEq(link.balanceOf(user1), 100e6);
 
         // user1 should have no tickets left
         assertEq(lottery.userStakes(user1), 0);
         // Optionally, check that user2's state is unchanged
         assertEq(lottery.userStakes(user2), 20e6);
-        // aUSDC balance of the pool should be 20e6 (only user2's stake remains)
-        assertEq(aUsdc.balanceOf(address(lottery)), 20e6);
+        // aEthLink balance of the pool should be 20e6 (only user2's stake remains)
+        assertEq(aEthLink.balanceOf(address(lottery)), 20e6);
     }
 
     function testEmergencyWithdraw() public {
@@ -233,7 +251,7 @@ contract TestLotteryPool is Test {
         lottery.stake(20e6);
 
         // user1's balance after staking
-        uint256 user1BalanceAfterStake = usdc.balanceOf(user1);
+        uint256 user1BalanceAfterStake = link.balanceOf(user1);
         console.log("user1BalanceAfterStake", user1BalanceAfterStake);
         assertEq(user1BalanceAfterStake, 90e6);
 
@@ -246,7 +264,7 @@ contract TestLotteryPool is Test {
         vm.prank(user1);
         lottery.emergencyWithdraw();
 
-        uint256 user1BalanceAfterEmergencyWithdraw = usdc.balanceOf(user1);
+        uint256 user1BalanceAfterEmergencyWithdraw = link.balanceOf(user1);
         console.log("user1BalanceAfterEmergencyWithdraw", user1BalanceAfterEmergencyWithdraw);
         assertEq(user1BalanceAfterEmergencyWithdraw, 100e6);
     }
@@ -259,7 +277,7 @@ contract TestLotteryPool is Test {
         lottery.stake(20e6);
 
         // user1's balance after staking
-        uint256 user1BalanceAfterStake = usdc.balanceOf(user1);
+        uint256 user1BalanceAfterStake = link.balanceOf(user1);
         console.log("user1BalanceAfterStake", user1BalanceAfterStake);
         assertEq(user1BalanceAfterStake, 90e6);
 
