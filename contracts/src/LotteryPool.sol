@@ -101,6 +101,7 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     /// @param _interval The interval (in seconds) between lottery rounds
     /// @param _platformFeeRecipient The address of the platform fee recipient
     constructor(
+        address _vrfCoordinator,
         bytes32 _keyHash,
         uint256 _subscriptionId,
         address _usdc,
@@ -109,7 +110,7 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
         uint256 _interval,
         uint256 _ticketPurchaseCost,
         address _platformFeeRecipient
-    )  VRFConsumerBaseV2Plus(0x9DdfaCa8183c41ad55329BdeeD9F6A8d53168B1B) {
+    )  VRFConsumerBaseV2Plus(_vrfCoordinator) {
         keyHash = _keyHash;
         subscriptionId = _subscriptionId;
         usdc = IERC20(_usdc);
@@ -387,5 +388,11 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
         return tickets.length;
     }
 
+
+//// testing functions
+
+function setCurrentRound(uint256 round) external {
+    currentRound = round;
+}
 
 }
