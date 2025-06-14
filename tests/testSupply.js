@@ -1,3 +1,5 @@
+// Script to test the supply function
+
 const dotenv = require("dotenv");
 dotenv.config();
 const { lotteryContractAddress, abi, linkTokenAddress, linkTokenAbi } = require("./config");

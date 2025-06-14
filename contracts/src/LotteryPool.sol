@@ -420,6 +420,17 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
         return totalYieldGenerated;
     }
 
+    /// @notice Returns the number of seconds until the next draw is due
+    /// @return Seconds until the next draw (0 if already due)
+    function getTimeUntilNextDraw() external view returns (uint256) {
+        uint256 nextDrawTime = lastTimeStamp + interval;
+        if (block.timestamp >= nextDrawTime) {
+            return 0;
+        } else {
+            return nextDrawTime - block.timestamp;
+        }
+    }
+
 //// testing functions
 
 function setCurrentRound(uint256 round) external {

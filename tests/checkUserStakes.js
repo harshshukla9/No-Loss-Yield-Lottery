@@ -1,3 +1,5 @@
+// Script to check the user stakes
+
 const dotenv = require("dotenv");
 dotenv.config();
 const { lotteryContractAddress, abi, linkTokenAddress, linkTokenAbi } = require("./config");
