@@ -148,15 +148,15 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     /// @dev Transfers USDC from the user, deposits into Aave, and issues a lottery ticket.
     /// If purchased after the entry cutoff, the ticket is not eligible for the next round but is auto-compounded for all subsequent rounds.
     /// @param amount The amount of USDC to stake (must be >= ticketPurchaseCost)
-    function stake(uint256 amount) external payable nonReentrant whenNotPaused {
+    function stake(uint256 amount) external nonReentrant whenNotPaused {
         if (amount == 0) revert Lottery_InvalidAmount();
         if (amount < ticketPurchaseCost) revert Lottery_InsufficientLINK();
 
         uint256 ticketStartRound;
         if (block.timestamp < lastTimeStamp + interval - entryCutoffTime) {
-            ticketStartRound = currentRound + 1; // Eligible for next round
+            ticketStartRound = currentRound; // Eligible for this round
         } else {
-            ticketStartRound = currentRound + 2; // Eligible for the round after next
+            ticketStartRound = currentRound + 1; // Eligible for the next round 
         }
 
         link.transferFrom(msg.sender, address(this), amount);
