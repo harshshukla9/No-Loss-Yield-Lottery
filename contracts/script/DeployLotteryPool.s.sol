@@ -15,7 +15,7 @@ contract DeployLotteryPool is Script {
         address aaveLendingPool = 0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951;
         address aUsdc = 0x625E7708f30cA75bfd92586e17077590C60eb4cD;
         address aEthLink = 0x3FfAf50D4F4E96eB78f2407c090b72e86eCaed24; //sepolia aEthLink
-        uint256 interval = 1 days; //1 day for testing 7 days for production
+        uint256 interval = 7 days; //time between draws
         uint256 ticketPurchaseCost = 5 * 1e18; // 5 link for testing
         address platformFeeRecipient = 0x473fa0F100981fffFf40dB48B29B97AF9A44Dbbc; // The address that will receive the platform fee multisig
 

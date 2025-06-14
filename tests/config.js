@@ -1,5 +1,5 @@
 module.exports = {
-    lotteryContractAddress: "0xc7d13c71aED2c681e262DC8f8a9Bdc473504eF91",
+    lotteryContractAddress: "0x51734360672869Cae4aD50Bc0153a643F306A239",
     abi: [
         {
             "type": "constructor",
@@ -483,7 +483,7 @@ module.exports = {
                 }
             ],
             "outputs": [],
-            "stateMutability": "payable"
+            "stateMutability": "nonpayable"
         },
         {
             "type": "function",
