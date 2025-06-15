@@ -69,6 +69,18 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     uint256 public constant FEE_BPS = 100; // 1% = 100 basis points (BPS)
     uint256 public constant BPS_DENOMINATOR = 10000;
 
+    struct RequestStatus {
+    bool fulfilled; // whether the request has been successfully fulfilled
+    bool exists; // whether a requestId exists
+    uint256[] randomWords;
+    }
+    mapping(uint256 => RequestStatus)
+        public s_requests; /* requestId --> requestStatus */
+
+    // Past request IDs.
+    uint256 requestId;
+    uint256[] public requestIds;
+    uint256 public lastRequestId;
 
     // testing variables
     bool private forceUpkeep = false;
@@ -93,6 +105,9 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
 
     /// @notice Emitted when a user is refunded in an emergency
     event EmergencyRefund(address indexed user, uint256 amount);
+
+    event RequestSent(uint256 requestId, uint32 numWords);
+    event RequestFulfilled(uint256 requestId, uint256[] randomWords);
 
     ///////////////////////////////////
     ///          FUNCTIONS          ///
@@ -175,20 +190,21 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
 
     /// @notice Chainlink Automation: Checks if a new lottery round should start
     /// @dev Returns true if the interval has passed since the last round
-    /// @param checkData Not used
+    // / @param checkData Not used
     /// @return upkeepNeeded True if upkeep is needed, false otherwise
     /// @return performData Not used
-    function checkUpkeep(bytes calldata checkData) external view override returns (bool upkeepNeeded, bytes memory performData) {
+    function checkUpkeep(bytes calldata /*checkData*/) external view override returns (bool upkeepNeeded, bytes memory /*performData*/) {
         if (forceUpkeep) {
-        return (true, performData);
-    }
+            return (true, bytes(""));
+        }
         upkeepNeeded = (block.timestamp - lastTimeStamp) >= interval;
+        return (upkeepNeeded, bytes(""));
     }
 
     /// @notice Chainlink Automation: Triggers a new lottery round
     /// @dev Requests a random winner if the interval has passed
-    /// @param performData Not used
-    function performUpkeep(bytes calldata performData) external override whenNotPaused {
+    // / @param performData Not used
+    function performUpkeep(bytes calldata /*performData*/) external override whenNotPaused {
         if ((block.timestamp - lastTimeStamp) < interval) revert Lottery_IntervalNotPassed();
         if (tickets.length == 0) revert Lottery_NoTicketsInRound();
         lastTimeStamp = block.timestamp;
@@ -197,8 +213,8 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
 
     /// @notice Requests a random winner from Chainlink VRF
     /// @dev Internal function to request random words from Chainlink VRF
-    function requestRandomWinner() internal {
-        s_vrfCoordinator.requestRandomWords(
+    function requestRandomWinner() internal returns (uint256){
+         requestId = s_vrfCoordinator.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
                 keyHash: keyHash,
                 subId: subscriptionId,
@@ -206,17 +222,30 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
                 callbackGasLimit: callbackGasLimit,
                 numWords: numWords,
                 extraArgs: VRFV2PlusClient._argsToBytes(
-                    VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
+                VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
                 )
             })
         );
+            s_requests[requestId] = RequestStatus({
+            randomWords: new uint256[](0),
+            exists: true,
+            fulfilled: false
+        });
+        requestIds.push(requestId);
+        lastRequestId = requestId;
+        emit RequestSent(requestId, numWords);
+        return requestId;
     }
 
     /// @notice Chainlink VRF callback: Selects the winner and distributes yield
     /// @dev Called by Chainlink VRF with random words. Only tickets eligible for the current round are considered.
-    /// @param requestId The request ID (unused)
-    /// @param randomWords The array of random words provided by Chainlink VRF
-    function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
+    /// @param  _requestId The request ID (unused)
+    /// @param _randomWords The array of random words provided by Chainlink VRF
+    function fulfillRandomWords(uint256  _requestId, uint256[] calldata _randomWords) internal override {
+        require(s_requests[_requestId].exists, "request not found");
+        s_requests[_requestId].fulfilled = true;
+        s_requests[_requestId].randomWords = _randomWords;
+        emit RequestFulfilled(_requestId, _randomWords);
         // Collect indices of eligible tickets for this round
         uint256 eligibleCount = 0;
         for (uint256 i = 0; i < tickets.length; i++) {
@@ -237,7 +266,7 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
             }
         }
 
-        uint256 winnerArrayIndex = randomWords[0] % eligibleCount;
+        uint256 winnerArrayIndex = _randomWords[0] % eligibleCount;
         uint256 winnerTicketIndex = eligibleIndices[winnerArrayIndex];
         address winner = tickets[winnerTicketIndex].user;
 
@@ -280,6 +309,15 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
         emit AutoCompounded(totalStaked);
 
         currentRound++; // Move to the next round
+    }
+
+
+    function getRequestStatus(
+        uint256 _requestId
+    ) external view returns (bool fulfilled, uint256[] memory randomWords) {
+        require(s_requests[_requestId].exists, "request not found");
+        RequestStatus memory request = s_requests[_requestId];
+        return (request.fulfilled, request.randomWords);
     }
 
 

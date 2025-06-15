@@ -1,5 +1,5 @@
 module.exports = {
-    lotteryContractAddress: "0x51734360672869Cae4aD50Bc0153a643F306A239",
+    lotteryContractAddress: "0xFBf9AD6D2e7c66719A95d6Cd6baD28EAfbe9478D",
     abi: [
         {
             "type": "constructor",
@@ -142,7 +142,7 @@ module.exports = {
             "name": "checkUpkeep",
             "inputs": [
                 {
-                    "name": "checkData",
+                    "name": "",
                     "type": "bytes",
                     "internalType": "bytes"
                 }
@@ -154,7 +154,7 @@ module.exports = {
                     "internalType": "bool"
                 },
                 {
-                    "name": "performData",
+                    "name": "",
                     "type": "bytes",
                     "internalType": "bytes"
                 }
@@ -209,7 +209,44 @@ module.exports = {
         },
         {
             "type": "function",
+            "name": "getRequestStatus",
+            "inputs": [
+                {
+                    "name": "_requestId",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "fulfilled",
+                    "type": "bool",
+                    "internalType": "bool"
+                },
+                {
+                    "name": "randomWords",
+                    "type": "uint256[]",
+                    "internalType": "uint256[]"
+                }
+            ],
+            "stateMutability": "view"
+        },
+        {
+            "type": "function",
             "name": "getTicketCount",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                }
+            ],
+            "stateMutability": "view"
+        },
+        {
+            "type": "function",
+            "name": "getTimeUntilNextDraw",
             "inputs": [],
             "outputs": [
                 {
@@ -293,6 +330,19 @@ module.exports = {
         },
         {
             "type": "function",
+            "name": "lastRequestId",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                }
+            ],
+            "stateMutability": "view"
+        },
+        {
+            "type": "function",
             "name": "lastTimeStamp",
             "inputs": [],
             "outputs": [
@@ -368,7 +418,7 @@ module.exports = {
             "name": "performUpkeep",
             "inputs": [
                 {
-                    "name": "performData",
+                    "name": "",
                     "type": "bytes",
                     "internalType": "bytes"
                 }
@@ -416,6 +466,49 @@ module.exports = {
                     "name": "",
                     "type": "uint16",
                     "internalType": "uint16"
+                }
+            ],
+            "stateMutability": "view"
+        },
+        {
+            "type": "function",
+            "name": "requestIds",
+            "inputs": [
+                {
+                    "name": "",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                }
+            ],
+            "stateMutability": "view"
+        },
+        {
+            "type": "function",
+            "name": "s_requests",
+            "inputs": [
+                {
+                    "name": "",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "fulfilled",
+                    "type": "bool",
+                    "internalType": "bool"
+                },
+                {
+                    "name": "exists",
+                    "type": "bool",
+                    "internalType": "bool"
                 }
             ],
             "stateMutability": "view"
@@ -717,6 +810,44 @@ module.exports = {
                     "type": "address",
                     "indexed": false,
                     "internalType": "address"
+                }
+            ],
+            "anonymous": false
+        },
+        {
+            "type": "event",
+            "name": "RequestFulfilled",
+            "inputs": [
+                {
+                    "name": "requestId",
+                    "type": "uint256",
+                    "indexed": false,
+                    "internalType": "uint256"
+                },
+                {
+                    "name": "randomWords",
+                    "type": "uint256[]",
+                    "indexed": false,
+                    "internalType": "uint256[]"
+                }
+            ],
+            "anonymous": false
+        },
+        {
+            "type": "event",
+            "name": "RequestSent",
+            "inputs": [
+                {
+                    "name": "requestId",
+                    "type": "uint256",
+                    "indexed": false,
+                    "internalType": "uint256"
+                },
+                {
+                    "name": "numWords",
+                    "type": "uint32",
+                    "indexed": false,
+                    "internalType": "uint32"
                 }
             ],
             "anonymous": false
