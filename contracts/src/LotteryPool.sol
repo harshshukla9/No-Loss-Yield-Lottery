@@ -36,7 +36,7 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     // VRFCoordinatorV2Interface public vrfCoordinator;
     bytes32 public keyHash;
     uint256 public subscriptionId;
-    uint32 public callbackGasLimit = 100000;
+    uint32 public callbackGasLimit = 1000000;
     uint16 public requestConfirmations = 3;
     uint32 public numWords = 1;
     uint256 public ticketPurchaseCost;
@@ -483,4 +483,7 @@ function setCheckUpkeepToTrue(bool _force) external {
     forceUpkeep = _force;
 }
 
+  function setCallbackGasLimit(uint32 _limit) external onlyOwner {
+      callbackGasLimit = _limit;
+  }
 }

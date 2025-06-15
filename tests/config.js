@@ -1,5 +1,5 @@
 module.exports = {
-    lotteryContractAddress: "0xc94893B18f03f735702c75CbFBCEfd9d57638Bc1",
+    lotteryContractAddress: "0xC41E58930b58A24b1cd62FDB2e31097C77bBf365",
     abi: [
         {
             "type": "constructor",
@@ -525,6 +525,19 @@ module.exports = {
                 }
             ],
             "stateMutability": "view"
+        },
+        {
+            "type": "function",
+            "name": "setCallbackGasLimit",
+            "inputs": [
+                {
+                    "name": "_limit",
+                    "type": "uint32",
+                    "internalType": "uint32"
+                }
+            ],
+            "outputs": [],
+            "stateMutability": "nonpayable"
         },
         {
             "type": "function",
