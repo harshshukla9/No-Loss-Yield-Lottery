@@ -1,5 +1,5 @@
 module.exports = {
-    lotteryContractAddress: "0xFBf9AD6D2e7c66719A95d6Cd6baD28EAfbe9478D",
+    lotteryContractAddress: "0xc94893B18f03f735702c75CbFBCEfd9d57638Bc1",
     abi: [
         {
             "type": "constructor",

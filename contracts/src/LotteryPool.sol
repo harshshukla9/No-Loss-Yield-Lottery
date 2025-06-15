@@ -194,7 +194,7 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     /// @return upkeepNeeded True if upkeep is needed, false otherwise
     /// @return performData Not used
     function checkUpkeep(bytes calldata /*checkData*/) external view override returns (bool upkeepNeeded, bytes memory /*performData*/) {
-        if (forceUpkeep) {
+        if (forceUpkeep) { // for testing only
             return (true, bytes(""));
         }
         upkeepNeeded = (block.timestamp - lastTimeStamp) >= interval;
@@ -205,8 +205,10 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     /// @dev Requests a random winner if the interval has passed
     // / @param performData Not used
     function performUpkeep(bytes calldata /*performData*/) external override whenNotPaused {
+    if (!forceUpkeep) { /// for testing only
         if ((block.timestamp - lastTimeStamp) < interval) revert Lottery_IntervalNotPassed();
         if (tickets.length == 0) revert Lottery_NoTicketsInRound();
+    }
         lastTimeStamp = block.timestamp;
         requestRandomWinner();
     }
