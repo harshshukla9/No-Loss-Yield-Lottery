@@ -174,8 +174,13 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
             ticketStartRound = currentRound + 1; // Eligible for the next round 
         }
 
+        // allow multiple tickets to be purchased at once
+        uint256 numTickets = amount / ticketPurchaseCost;
+        for (uint256 i = 0; i < numTickets; i++) {
+            tickets.push(Ticket(msg.sender, ticketPurchaseCost, ticketStartRound));
+        }
+
         link.transferFrom(msg.sender, address(this), amount);
-        tickets.push(Ticket(msg.sender, amount, ticketStartRound));
         userStakes[msg.sender] += amount;
 
         link.approve(aaveLendingPool, amount);
