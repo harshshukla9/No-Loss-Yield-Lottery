@@ -18,6 +18,11 @@ const main = async () => {
     await forceUpkeep.wait();
     console.log("Force upkeep set to true");
     console.log(forceUpkeep);
+    setTimeout(async () => {
+        const forceUpkeep = await lotteryContract.setCheckUpkeepToTrue(false);
+        await forceUpkeep.wait();
+        console.log("Force upkeep set to false");
+    }, 5000);
 }
 
 main();

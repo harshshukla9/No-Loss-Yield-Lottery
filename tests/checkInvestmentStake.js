@@ -15,10 +15,12 @@ const lotteryContract = new ethers.Contract(lotteryContractAddress, abi, signer)
 
 const main = async () => {
     console.log("Getting amount staked")
+
+    const investmentStakeCheck = await lotteryContract.getAaveInvestmentBalance();
+    console.log("Total amount in the contract:", ethers.formatEther(investmentStakeCheck));
     const amountStaked = await lotteryContract.getTotalStaked();
     console.log("Amount staked:", ethers.formatEther(amountStaked));
-    const investmentStakeCheck = await lotteryContract.getAaveInvestmentBalance();
-    console.log("Investment stake check:", ethers.formatEther(investmentStakeCheck));
+    console.log("interest Accrued:", ethers.formatEther( investmentStakeCheck - amountStaked ));
 }
 
 main();
