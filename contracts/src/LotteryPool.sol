@@ -478,13 +478,13 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
 
 //// testing functions
 
-function setCurrentRound(uint256 round) external {
+function setCurrentRound(uint256 round) external onlyOwner{
     currentRound = round;
 }
 
 // test function to be removed in  production
 // to manually force a checkupkeep to be true
-function setCheckUpkeepToTrue(bool _force) external {
+function setCheckUpkeepToTrue(bool _force) external onlyOwner {
     forceUpkeep = _force;
 }
 
