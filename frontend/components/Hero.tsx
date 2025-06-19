@@ -136,9 +136,7 @@ const Hero = () => {
         <div className='absolute top-1/3 right-20 text-5xl opacity-20 animate-spin-slow'>⭐</div>
       </div>
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Enter the Lottery">
-        <p>This is where you can add your entry form or wallet interaction.</p>
-      </Modal>
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Enter the Lottery" />
 
       {/* Custom CSS for slow spin */}
       <style jsx>{`
