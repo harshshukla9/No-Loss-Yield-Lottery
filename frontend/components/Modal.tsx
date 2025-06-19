@@ -16,7 +16,7 @@ const LINK_DECIMALS = 18;
 const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, onPurchase }) => {
   const [numTickets, setNumTickets] = useState(1);
 
-  const { approveLink, isApproving, isApproved, approveError, purchase, isPending, isConfirming, isSuccess, error } = usePurchaseTickets();
+  const { approveLink, isApproving, isApproved, approveError, purchase, isPending, isConfirming, isSuccess, error, reset } = usePurchaseTickets();
 
   const amount = BigInt(numTickets) * BigInt(TICKET_PRICE_LINK) * BigInt(10 ** LINK_DECIMALS);
 
@@ -32,8 +32,16 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, onPurchase }) => 
   useEffect(() => {
     if (isSuccess) {
       onClose();
+      reset();
     }
-  }, [isSuccess, onClose]);
+  }, [isSuccess, onClose, reset]);
+
+  // Also reset when modal is closed manually
+  useEffect(() => {
+    if (!isOpen) {
+      reset();
+    }
+  }, [isOpen, reset]);
 
   if (!isOpen) return null;
   return (
