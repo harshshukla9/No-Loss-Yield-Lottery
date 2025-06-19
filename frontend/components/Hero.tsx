@@ -1,10 +1,12 @@
 "use client"
 import React, { useState, useEffect } from 'react'
 import { useFetchTimeUntilNextDraw } from '../hooks/fetchTimeUntilNextDraw'
+import Modal from './Modal'
 
 const Hero = () => {
   const [currentPrize, setCurrentPrize] = useState(125000)
   const [participants, setParticipants] = useState(8247)
+  const [showModal, setShowModal] = useState(false)
 
   // Animate prize pool
   useEffect(() => {
@@ -74,12 +76,19 @@ const Hero = () => {
           </div>
         </div>
 
+        <div className='inline-flex items-center gap-2 bg-blue-500/20 backdrop-blur-sm px-4 py-2 rounded-full border border-blue-500/30 mb-6 text-sm font-medium'>
+            <span>5 LINK = 1 TICKET</span>
+        </div>
+
         {/* CTA Buttons */}
         <div className='flex flex-col sm:flex-row gap-4 mb-12'>
-          <button className='group bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-400 hover:to-blue-400 text-white font-bold py-4 px-8 rounded-xl text-lg transform hover:scale-105 transition-all duration-300 shadow-2xl hover:shadow-green-500/25'>
-            <span className='flex items-center gap-2'>
+          <button
+            className="group bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-400 hover:to-blue-400 text-white font-bold py-4 px-8 rounded-xl text-lg transform hover:scale-105 transition-all duration-300 shadow-2xl hover:shadow-green-500/25"
+            onClick={() => setShowModal(true)}
+          >
+            <span className="flex items-center gap-2">
               🎲 Enter Lottery Now
-              <span className='group-hover:translate-x-2 transition-transform'>→</span>
+              <span className="group-hover:translate-x-2 transition-transform">→</span>
             </span>
           </button>
           
@@ -126,6 +135,10 @@ const Hero = () => {
         <div className='absolute bottom-20 right-10 text-4xl opacity-20 animate-pulse delay-700'>🚀</div>
         <div className='absolute top-1/3 right-20 text-5xl opacity-20 animate-spin-slow'>⭐</div>
       </div>
+
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Enter the Lottery">
+        <p>This is where you can add your entry form or wallet interaction.</p>
+      </Modal>
 
       {/* Custom CSS for slow spin */}
       <style jsx>{`
