@@ -1,10 +1,10 @@
 "use client"
 import React, { useState, useEffect } from 'react'
+import { useFetchTimeUntilNextDraw } from '../hooks/fetchTimeUntilNextDraw'
 
 const Hero = () => {
   const [currentPrize, setCurrentPrize] = useState(125000)
   const [participants, setParticipants] = useState(8247)
-  const [timeLeft, setTimeLeft] = useState({ hours: 23, minutes: 42, seconds: 18 })
 
   // Animate prize pool
   useEffect(() => {
@@ -15,22 +15,12 @@ const Hero = () => {
     return () => clearInterval(interval)
   }, [])
 
-  // Countdown timer
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev.seconds > 0) {
-          return { ...prev, seconds: prev.seconds - 1 }
-        } else if (prev.minutes > 0) {
-          return { hours: prev.hours, minutes: prev.minutes - 1, seconds: 59 }
-        } else if (prev.hours > 0) {
-          return { hours: prev.hours - 1, minutes: 59, seconds: 59 }
-        }
-        return prev
-      })
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [])
+  // Use the real countdown
+  const { seconds, isLoading, error } = useFetchTimeUntilNextDraw()
+  const days = Math.floor(seconds / (24 * 3600))
+  const hours = Math.floor((seconds % (24 * 3600)) / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = seconds % 60
 
   const features = [
     { icon: "🔗", title: "Chainlink VRF", desc: "Provably fair randomness" },
@@ -53,7 +43,9 @@ const Hero = () => {
         <div className='mb-8 space-y-4'>
           <div className='inline-flex items-center gap-2 bg-blue-500/20 backdrop-blur-sm px-4 py-2 rounded-full border border-blue-500/30 mb-6'>
             <div className='w-2 h-2 bg-green-400 rounded-full animate-pulse'></div>
-            <span className='text-sm font-medium'>Next Draw in {timeLeft.hours}h {timeLeft.minutes}m {timeLeft.seconds}s</span>
+            <span className='text-sm font-medium'>
+              {isLoading ? 'Loading...' : error ? 'Error' : `Next Draw in ${days}d ${hours}h ${minutes}m ${secs}s`}
+            </span>
           </div>
           
           <h1 className='text-6xl md:text-8xl font-bold mb-4 bg-gradient-to-r from-blue-400 via-green-400 to-blue-400 bg-clip-text text-transparent animate-pulse'>
