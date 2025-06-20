@@ -1,6 +1,7 @@
 "use client"
 import React, { useState, useEffect } from 'react'
 import { useFetchTimeUntilNextDraw } from '../hooks/fetchTimeUntilNextDraw'
+import { useFetchTotalTicketCount } from '../hooks/FetchTicketCount'
 import Modal from './Modal'
 
 const Hero = () => {
@@ -23,6 +24,8 @@ const Hero = () => {
   const hours = Math.floor((seconds % (24 * 3600)) / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const secs = seconds % 60
+
+  const { total: totalTickets, loading: ticketsLoading } = useFetchTotalTicketCount()
 
   const features = [
     { icon: "🔗", title: "Chainlink VRF", desc: "Provably fair randomness" },
@@ -71,8 +74,8 @@ const Hero = () => {
           <div className='text-5xl md:text-6xl font-bold text-green-400 mb-2'>
             ${currentPrize.toLocaleString()}
           </div>
-          <div className='text-sm text-gray-400'>
-            {participants.toLocaleString()} participants • Growing every second
+          <div className='text-3xl md:text-4xl font-bold text-blue-400 text-center'>
+            {ticketsLoading ? 'Loading tickets...' : `${totalTickets} tickets sold`}
           </div>
         </div>
 
