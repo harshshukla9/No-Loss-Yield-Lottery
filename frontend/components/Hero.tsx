@@ -62,7 +62,7 @@ const Hero = () => {
           </h2>
           
           <p className='text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto leading-relaxed'>
-            The first truly decentralized lottery powered by <span className='text-blue-400 font-semibold'>Chainlink VRF</span>
+            The first truly decentralized no loss lottery powered by <span className='text-blue-400 font-semibold'>Chainlink VRF</span>
             <br />
             <span className='text-green-400 font-bold'>Provably Fair • Instant Payouts • Global Access</span>
           </p>
