@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react'
 import { useFetchTimeUntilNextDraw } from '../hooks/fetchTimeUntilNextDraw'
 import { useFetchTotalTicketCount } from '../hooks/FetchTicketCount'
+import { useFetchYieldAccrued } from '../hooks/fecthYieldAccrued'
 import Modal from './Modal'
 
 const Hero = () => {
@@ -26,6 +27,7 @@ const Hero = () => {
   const secs = seconds % 60
 
   const { total: totalTickets, loading: ticketsLoading } = useFetchTotalTicketCount()
+  const { interestAccrued, loading: yieldLoading, error: yieldError } = useFetchYieldAccrued()
 
   const features = [
     { icon: "🔗", title: "Chainlink VRF", desc: "Provably fair randomness" },
@@ -72,7 +74,13 @@ const Hero = () => {
         <div className='bg-gradient-to-r from-green-500/20 to-blue-500/20 backdrop-blur-lg rounded-2xl p-8 mb-8 border border-green-500/30 transform hover:scale-105 transition-all duration-300'>
           <div className='text-sm text-gray-300 mb-2'>Current Prize Pool</div>
           <div className='text-5xl md:text-6xl font-bold text-green-400 mb-2'>
-            ${currentPrize.toLocaleString()}
+            {yieldLoading
+              ? 'Loading yield...'
+              : yieldError
+                ? 'Error fetching yield'
+                : interestAccrued !== null
+                  ? `${(Number(interestAccrued) / 1e18).toFixed(3)} LINK`
+                  : '0 LINK'}
           </div>
           <div className='text-3xl md:text-4xl font-bold text-blue-400 text-center'>
             {ticketsLoading ? 'Loading tickets...' : `${totalTickets} tickets sold`}
