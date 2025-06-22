@@ -1,7 +1,7 @@
-"use client"
-import React, { useState, useEffect } from 'react';
-import { usePurchaseTickets } from '../hooks/purchaseTickets';
-import config from '../config';
+"use client";
+import React, { useState, useEffect } from "react";
+import { usePurchaseTickets } from "../hooks/purchaseTickets";
+import config from "../lib/config";
 
 interface ModalProps {
   isOpen: boolean;
@@ -13,12 +13,31 @@ interface ModalProps {
 const TICKET_PRICE_LINK = 5; // Each ticket is 5 LINK
 const LINK_DECIMALS = 18;
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, onPurchase }) => {
+const Modal: React.FC<ModalProps> = ({
+  isOpen,
+  onClose,
+  title,
+  onPurchase,
+}) => {
   const [numTickets, setNumTickets] = useState(1);
 
-  const { approveLink, isApproving, isApproved, approveError, purchase, isPending, isConfirming, isSuccess, error, reset } = usePurchaseTickets();
+  const {
+    approveLink,
+    isApproving,
+    isApproved,
+    approveError,
+    purchase,
+    isPending,
+    isConfirming,
+    isSuccess,
+    error,
+    reset,
+  } = usePurchaseTickets();
 
-  const amount = BigInt(numTickets) * BigInt(TICKET_PRICE_LINK) * BigInt(10 ** LINK_DECIMALS);
+  const amount =
+    BigInt(numTickets) *
+    BigInt(TICKET_PRICE_LINK) *
+    BigInt(10 ** LINK_DECIMALS);
 
   const handleApprove = () => {
     approveLink(amount);
@@ -66,31 +85,46 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, onPurchase }) => 
               type="number"
               min={1}
               value={numTickets}
-              onChange={e => setNumTickets(Number(e.target.value))}
+              onChange={(e) => setNumTickets(Number(e.target.value))}
               className="ml-2 px-3 py-2 rounded border border-blue-300 text-black"
             />
           </label>
           <div>
-            Total: <span className="font-bold">{numTickets * TICKET_PRICE_LINK} LINK</span>
+            Total:{" "}
+            <span className="font-bold">
+              {numTickets * TICKET_PRICE_LINK} LINK
+            </span>
           </div>
           <button
             className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded"
             onClick={handleApprove}
             disabled={isApproving || isApproved}
           >
-            {isApproving ? "Approving..." : isApproved ? "Approved" : "Approve LINK"}
+            {isApproving
+              ? "Approving..."
+              : isApproved
+              ? "Approved"
+              : "Approve LINK"}
           </button>
-          {approveError && <div className="text-red-600">{approveError.message}</div>}
+          {approveError && (
+            <div className="text-red-600">{approveError.message}</div>
+          )}
           {isApproved && (
             <button
               className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded"
               onClick={handlePurchase}
               disabled={isPending || isConfirming}
             >
-              {isPending ? "Confirm in Wallet..." : isConfirming ? "Waiting for Confirmation..." : "Purchase"}
+              {isPending
+                ? "Confirm in Wallet..."
+                : isConfirming
+                ? "Waiting for Confirmation..."
+                : "Purchase"}
             </button>
           )}
-          {isSuccess && <div className="text-green-600 font-bold">Purchase successful!</div>}
+          {isSuccess && (
+            <div className="text-green-600 font-bold">Purchase successful!</div>
+          )}
           {error && <div className="text-red-600">{error.message}</div>}
         </div>
       </div>
@@ -98,4 +132,4 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, onPurchase }) => 
   );
 };
 
-export default Modal; 
+export default Modal;

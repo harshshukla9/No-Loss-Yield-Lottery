@@ -1,10 +1,18 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
-import { arbitrum, base, mainnet, optimism, polygon, sepolia, anvil } from "wagmi/chains";
+import {
+  arbitrum,
+  base,
+  mainnet,
+  optimism,
+  polygon,
+  sepolia,
+  anvil,
+} from "wagmi/chains";
 
-const sepoliaRpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
-if (!sepoliaRpcUrl) {
-  throw new Error("NEXT_PUBLIC_RPC_URL is not set in your environment variables.");
-}
+// Use NEXT_PUBLIC_ prefix for client-side environment variables
+const sepoliaRpcUrl =
+  process.env.NEXT_PUBLIC_RPC_URL || "https://rpc.sepolia.org";
+
 const customSepolia = {
   ...sepolia,
   rpcUrls: {
@@ -14,8 +22,8 @@ const customSepolia = {
 };
 
 export const config = getDefaultConfig({
-  appName: "RainbowKit Demo",
-  projectId: "YOUR_PROJECT_ID", // Keep or remove if unnecessary
+  appName: "No Loss Lottery",
+  projectId: "71cda57ca511883099415cf3026bd537",
   chains: [
     customSepolia,
     mainnet,
@@ -23,8 +31,10 @@ export const config = getDefaultConfig({
     optimism,
     arbitrum,
     base,
-    anvil, // ✅ Add localhost for Hardhat
-    ...(process.env.NEXT_PUBLIC_ENABLE_TESTNETS === "true" ? [customSepolia] : []),
+    anvil,
+    ...(process.env.NEXT_PUBLIC_ENABLE_TESTNETS === "true"
+      ? [customSepolia]
+      : []),
   ],
   ssr: true,
 });
