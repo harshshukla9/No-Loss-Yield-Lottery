@@ -1,14 +1,15 @@
+import { JSX } from "react";
+
 import About from "@/components/About";
 import Footer from "@/components/footer";
 import Hero from "@/components/Hero";
-import Image from "next/image";
 
-export default function Home() {
+export default function Home(): JSX.Element {
   return (
     <div>
-      <Hero/>
-      <About/>
-      <Footer/>
+      <Hero />
+      <About />
+      <Footer />
     </div>
   );
 }

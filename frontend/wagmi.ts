@@ -1,5 +1,5 @@
 import { createConfig, http } from "wagmi";
-import {sepolia } from "wagmi/chains";
+import { sepolia } from "wagmi/chains";
 
 export const config = createConfig({
   chains: [
