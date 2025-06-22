@@ -4,6 +4,8 @@ pragma solidity ^0.8.19;
 import {Test, console} from "forge-std/Test.sol";
 import "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
 import "../../src/LotteryPool.sol";
+import "forge-std/Vm.sol";
+import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 // Minimal ERC20 mock for link/aEthLink
 contract ERC20Mock is IERC20, Test {
@@ -131,7 +133,7 @@ contract TestLotteryPool is Test {
         vm.prank(user1);
         lottery.stake(10e6); // 10 link
 
-        assertEq(lottery.getTicketCount(), 1);
+        assertEq(lottery.getTicketCount(), 10);
         assertEq(lottery.userStakes(user1), 10e6);
     }
 
@@ -173,6 +175,19 @@ contract TestLotteryPool is Test {
         uint256 requestId = 1;
         vrfCoordinator.fulfillRandomWords(requestId, address(lottery));
 
+        // Record logs and parse WinnerSelected event
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        address winner;
+        uint256 amountWon;
+        bytes32 eventSig = keccak256("WinnerSelected(address,uint256)");
+        for (uint i = 0; i < entries.length; i++) {
+            if (entries[i].topics[0] == eventSig) {
+                winner = address(uint160(uint256(entries[i].topics[1])));
+                amountWon = abi.decode(entries[i].data, (uint256));
+                break;
+            }
+        }
+
         // Now check balances
         uint256 expectedWinnerBalance = 80e6 + winnerAmount;
         console.log("user2 balance", link.balanceOf(user2));
@@ -196,7 +211,7 @@ contract TestLotteryPool is Test {
         vm.prank(user2);
         lottery.stake(20e6);
 
-        assertEq(lottery.getTicketCount(), 2);
+        assertEq(lottery.getTicketCount(), 30);
     }
 
     function testGetAaveInvestmentBalance() public {
@@ -288,8 +303,96 @@ contract TestLotteryPool is Test {
 
     }
 
-    // Add more tests for:
-    // - withdrawInterest
-    // - pausing/unpausing
-    // - edge cases (no tickets, no yield, etc.)
+    function testPauseAndUnpause() public {
+        vm.prank(owner);
+        lottery.pause();
+        assertEq(lottery.paused(), true);
+        lottery.unpause();
+        assertEq(lottery.paused(), false);
+    }
+
+    function testWinnerSelectionAndYield() public {
+        //user should purchase tickets
+        vm.prank(user1);
+        lottery.stake(40e6);
+        vm.prank(user2);
+        lottery.stake(1e6);
+        // console.log user balances
+        console.log("user1 balance", link.balanceOf(user1));
+        console.log("user2 balance", link.balanceOf(user2));
+        uint256 user1BalanceBefore = link.balanceOf(user1);
+        uint256 user2BalanceBefore = link.balanceOf(user2);
+        //simulate yield
+        aEthLink.mint(address(lottery), 3e6);
+
+        //simulate time passing
+        vm.warp(block.timestamp + 2 days);
+        vm.recordLogs();
+        //call performUpkeep and fulfill
+        lottery.setCurrentRound(2);
+        lottery.performUpkeep("");
+        uint256 requestId = 1;
+        vrfCoordinator.fulfillRandomWords(requestId, address(lottery));
+
+        // Record logs and parse WinnerSelected event
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        address winner;
+        uint256 amountWon;
+        bytes32 eventSig = keccak256("WinnerSelected(address,uint256)");
+        for (uint i = 0; i < entries.length; i++) {
+            if (entries[i].topics[0] == eventSig) {
+                winner = address(uint160(uint256(entries[i].topics[1])));
+                amountWon = abi.decode(entries[i].data, (uint256));
+                break;
+            }
+        }
+
+        console.log("winner", winner);
+        console.log(user1);
+        console.log(user2);
+
+        uint256 winnerBalanceAfter = link.balanceOf(winner);
+        uint256 winnerBalanceBefore = winner == user1 ? user1BalanceBefore : user2BalanceBefore;
+
+
+        //check winner
+        assertEq(lottery.currentRound(), 3);
+        assertEq(winnerBalanceAfter, winnerBalanceBefore + amountWon);
+        console.log("user1 balance", link.balanceOf(user1));
+        console.log("user2 balance", link.balanceOf(user2));
+    }
+
+
+    function testWithdrawOfIntrestOnlyOwner() public {
+        //user should purchase tickets
+        vm.prank(user1);
+        lottery.stake(40e6);
+        vm.prank(user2);
+        lottery.stake(1e6);
+        //simulate yield
+        aEthLink.mint(address(lottery), 3e6);
+        //call withdrawOfIntrestOnlyOwner
+        vm.prank(owner);
+        lottery.withdrawInterest(owner);
+
+        //check owner balance
+        assertEq(link.balanceOf(owner), 3e6);
+
+    }
+
+    function testWithdrawOfIntrestOnlyOwnerFailsIfNotOwner() public {
+        //user should purchase tickets
+        vm.prank(user1);
+        lottery.stake(40e6);
+        vm.prank(user2);
+        lottery.stake(1e6);
+        //call withdrawOfIntrestOnlyOwner
+        vm.prank(user1);
+        vm.expectRevert("Only callable by owner");
+        lottery.withdrawInterest(user1);
+
+        //check owner balance   
+        assertEq(link.balanceOf(owner), 0);
+    }
+        
 }
