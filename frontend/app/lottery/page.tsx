@@ -4,6 +4,7 @@ import PoolStats from "@/components/PoolStats";
 import YourAccount from "@/components/YourAccount";
 import RoundInfo from "@/components/RoundInfo";
 import PurchaseTickets from "@/components/PurchaseTickets";
+import QuickActions from "@/components/QuickActions";
 
 const LotteryDashboard = () => {
   return (
@@ -70,19 +71,7 @@ const LotteryDashboard = () => {
             <RoundInfo />
 
             {/* Quick Actions */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h2 className="text-xl font-semibold text-slate-900 mb-6">
-                Quick Actions
-              </h2>
-              <div className="space-y-3">
-                <button className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 px-4 rounded-lg font-medium transition-colors duration-200">
-                  View Transaction History
-                </button>
-                <button className="w-full bg-red-50 hover:bg-red-100 text-red-700 py-3 px-4 rounded-lg font-medium transition-colors duration-200">
-                  Withdraw All Tickets
-                </button>
-              </div>
-            </div>
+            <QuickActions />
           </div>
         </div>
       </div>
