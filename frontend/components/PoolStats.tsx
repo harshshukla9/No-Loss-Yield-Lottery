@@ -10,7 +10,7 @@ const PoolStats = () => {
   const formatTotalStaked = () => {
     if (totalStaked.isLoading) return "Loading...";
     if (totalStaked.error) return "Error";
-    if (!totalStaked.data) return "0.00";
+    if (!totalStaked.data || typeof totalStaked.data !== "bigint") return "0.00";
     return parseFloat(formatUnits(totalStaked.data, 18)).toFixed(2);
   };
 
@@ -24,7 +24,7 @@ const PoolStats = () => {
   const formatTotalYieldGenerated = () => {
     if (totalYieldGenerated.isLoading) return "Loading...";
     if (totalYieldGenerated.error) return "Error";
-    if (!totalYieldGenerated.data) return "0.00";
+    if (!totalYieldGenerated.data || typeof totalYieldGenerated.data !== "bigint") return "0.00";
     return parseFloat(formatUnits(totalYieldGenerated.data, 18)).toFixed(2);
   };
 

@@ -4,6 +4,8 @@ pragma solidity ^0.8.19;
 import {Test, console} from "forge-std/Test.sol";
 import "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
 import "../../src/LotteryPool.sol";
+import "forge-std/Vm.sol";
+import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 // Minimal ERC20 mock for link/aEthLink
 contract ERC20Mock is IERC20, Test {
@@ -32,7 +34,11 @@ contract ERC20Mock is IERC20, Test {
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) external returns (bool) {
         require(balanceOf[from] >= amount, "Insufficient");
         require(allowance[from][msg.sender] >= amount, "Not allowed");
         balanceOf[from] -= amount;
@@ -63,13 +69,22 @@ contract AaveLendingPoolMock {
         aEthLink = ERC20Mock(_aEthLink);
     }
 
-    function supply(address asset, uint256 amount, address onBehalfOf, uint16) external {
+    function supply(
+        address asset,
+        uint256 amount,
+        address onBehalfOf,
+        uint16
+    ) external {
         require(asset == address(link), "Only link");
         link.transferFrom(msg.sender, address(this), amount);
         aEthLink.mint(onBehalfOf, amount);
     }
 
-    function withdraw(address asset, uint256 amount, address to) external returns (uint256) {
+    function withdraw(
+        address asset,
+        uint256 amount,
+        address to
+    ) external returns (uint256) {
         require(asset == address(link), "Only link");
         // Burn aEthLink from msg.sender
         aEthLink.burn(msg.sender, amount);
@@ -79,6 +94,7 @@ contract AaveLendingPoolMock {
 }
 
 contract TestLotteryPool is Test {
+    // --- Setup variables ---
     VRFCoordinatorV2_5Mock vrfCoordinator;
     ERC20Mock link;
     ERC20Mock aEthLink;
@@ -90,6 +106,7 @@ contract TestLotteryPool is Test {
     address user1 = address(0x1);
     address user2 = address(0x2);
 
+    // --- Deploy and initialize all contracts and balances before each test ---
     function setUp() public {
         // Deploy mocks
         vrfCoordinator = new VRFCoordinatorV2_5Mock(1e17, 1e9, 1e18);
@@ -127,26 +144,30 @@ contract TestLotteryPool is Test {
         link.approve(address(lottery), type(uint256).max);
     }
 
+    // --- Test: User can stake and receive tickets ---
     function testStakeAndEnterLottery() public {
         vm.prank(user1);
         lottery.stake(10e6); // 10 link
 
-        assertEq(lottery.getTicketCount(), 1);
+        assertEq(lottery.getTicketCount(), 10);
         assertEq(lottery.userStakes(user1), 10e6);
     }
 
+    // --- Test: Cannot stake zero amount ---
     function testCannotStakeZero() public {
         vm.prank(user1);
         vm.expectRevert(LotteryPool.Lottery_InvalidAmount.selector);
         lottery.stake(0);
     }
 
+    // --- Test: Cannot stake below ticket cost ---
     function testCannotStakeBelowTicketCost() public {
         vm.prank(user1);
         vm.expectRevert(LotteryPool.Lottery_InsufficientLINK.selector);
         lottery.stake(1e5); // 0.1 link
     }
 
+    // --- Test: Full round, winner selection, and yield distribution ---
     function testPerformUpkeepAndWinnerSelection() public {
         // Stake for two users
         vm.prank(user1);
@@ -173,6 +194,19 @@ contract TestLotteryPool is Test {
         uint256 requestId = 1;
         vrfCoordinator.fulfillRandomWords(requestId, address(lottery));
 
+        // Record logs and parse WinnerSelected event
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        address winner;
+        uint256 amountWon;
+        bytes32 eventSig = keccak256("WinnerSelected(address,uint256)");
+        for (uint i = 0; i < entries.length; i++) {
+            if (entries[i].topics[0] == eventSig) {
+                winner = address(uint160(uint256(entries[i].topics[1])));
+                amountWon = abi.decode(entries[i].data, (uint256));
+                break;
+            }
+        }
+
         // Now check balances
         uint256 expectedWinnerBalance = 80e6 + winnerAmount;
         console.log("user2 balance", link.balanceOf(user2));
@@ -185,111 +219,267 @@ contract TestLotteryPool is Test {
 
         // Check round incremented
         assertEq(lottery.currentRound(), 3);
-
-        // Optionally, check events (if using vm.expectEmit)
     }
 
+    // --- Test: Get ticket count after staking ---
     function testGetTicketCount() public {
-                // Stake for two users
         vm.prank(user1);
         lottery.stake(10e6);
         vm.prank(user2);
         lottery.stake(20e6);
-
-        assertEq(lottery.getTicketCount(), 2);
+        assertEq(lottery.getTicketCount(), 30);
     }
 
+    // --- Test: Get aEthLink balance after staking ---
     function testGetAaveInvestmentBalance() public {
-        // Stake for user1
         vm.prank(user1);
         lottery.stake(10e6); // 10 link
-
-        // The contract should have received 10 aEthLink
         uint256 aEthLinkBalance = lottery.getAaveInvestmentBalance();
         assertEq(aEthLinkBalance, 10e6);
 
-        // Stake for user2
         vm.prank(user2);
         lottery.stake(20e6); // 20 link
-
-        // The contract should now have 30 aEthLink
         aEthLinkBalance = lottery.getAaveInvestmentBalance();
         assertEq(aEthLinkBalance, 30e6);
     }
 
+    // --- Test: Withdraw all tickets for a user ---
     function testWithdrawAllOfAUsersTickets() public {
-        // Stake for user1 and user2
         vm.prank(user1);
         lottery.stake(10e6);
         vm.prank(user2);
         lottery.stake(20e6);
 
-        // user1's balance after staking
         uint256 user1BalanceAfterStake = link.balanceOf(user1);
         assertEq(user1BalanceAfterStake, 90e6);
 
-        // Call withdrawAllOfAUsersTickets as user1
         vm.prank(user1);
         lottery.withdrawAllOfAUsersTickets();
 
-        // user1's balance should be restored to initial (100e6)
         assertEq(link.balanceOf(user1), 100e6);
-
-        // user1 should have no tickets left
         assertEq(lottery.userStakes(user1), 0);
-        // Optionally, check that user2's state is unchanged
         assertEq(lottery.userStakes(user2), 20e6);
-        // aEthLink balance of the pool should be 20e6 (only user2's stake remains)
         assertEq(aEthLink.balanceOf(address(lottery)), 20e6);
     }
 
+    // --- Test: Emergency withdraw when paused ---
     function testEmergencyWithdraw() public {
-        // Stake for user1 and user2
         vm.prank(user1);
         lottery.stake(10e6);
         vm.prank(user2);
         lottery.stake(20e6);
 
-        // user1's balance after staking
         uint256 user1BalanceAfterStake = link.balanceOf(user1);
-        console.log("user1BalanceAfterStake", user1BalanceAfterStake);
         assertEq(user1BalanceAfterStake, 90e6);
 
-
-        // contract owner pause the contract
         vm.prank(owner);
         lottery.pause();
 
-        // Call emergencyWithdraw as user1  
         vm.prank(user1);
         lottery.emergencyWithdraw();
 
         uint256 user1BalanceAfterEmergencyWithdraw = link.balanceOf(user1);
-        console.log("user1BalanceAfterEmergencyWithdraw", user1BalanceAfterEmergencyWithdraw);
         assertEq(user1BalanceAfterEmergencyWithdraw, 100e6);
     }
 
+    // --- Test: Emergency withdraw fails if not paused ---
     function testEmergencyWithdrawFailsIfNotPaused() public {
-        // Stake for user1 and user2
         vm.prank(user1);
         lottery.stake(10e6);
         vm.prank(user2);
         lottery.stake(20e6);
 
-        // user1's balance after staking
         uint256 user1BalanceAfterStake = link.balanceOf(user1);
-        console.log("user1BalanceAfterStake", user1BalanceAfterStake);
         assertEq(user1BalanceAfterStake, 90e6);
 
-        // Call emergencyWithdraw as user1  
-        vm.prank(user1);    
+        vm.prank(user1);
         vm.expectRevert("Pausable: not paused");
         lottery.emergencyWithdraw();
-
     }
 
-    // Add more tests for:
-    // - withdrawInterest
-    // - pausing/unpausing
-    // - edge cases (no tickets, no yield, etc.)
+    // --- Test: Only owner can pause/unpause ---
+    function testPauseAndUnpause() public {
+        vm.prank(owner);
+        lottery.pause();
+        assertEq(lottery.paused(), true);
+        lottery.unpause();
+        assertEq(lottery.paused(), false);
+    }
+
+    // --- Test: Winner selection and yield distribution ---
+    function testWinnerSelectionAndYield() public {
+        vm.prank(user1);
+        lottery.stake(40e6);
+        vm.prank(user2);
+        lottery.stake(1e6);
+
+        uint256 user1BalanceBefore = link.balanceOf(user1);
+        uint256 user2BalanceBefore = link.balanceOf(user2);
+
+        aEthLink.mint(address(lottery), 3e6);
+        vm.warp(block.timestamp + 2 days);
+        vm.recordLogs();
+
+        lottery.setCurrentRound(2);
+        lottery.performUpkeep("");
+        uint256 requestId = 1;
+        vrfCoordinator.fulfillRandomWords(requestId, address(lottery));
+
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        address winner;
+        uint256 amountWon;
+        bytes32 eventSig = keccak256("WinnerSelected(address,uint256)");
+        for (uint i = 0; i < entries.length; i++) {
+            if (entries[i].topics[0] == eventSig) {
+                winner = address(uint160(uint256(entries[i].topics[1])));
+                amountWon = abi.decode(entries[i].data, (uint256));
+                break;
+            }
+        }
+
+        uint256 winnerBalanceAfter = link.balanceOf(winner);
+        uint256 winnerBalanceBefore = winner == user1 ? user1BalanceBefore : user2BalanceBefore;
+
+        assertEq(lottery.currentRound(), 3);
+        assertEq(winnerBalanceAfter, winnerBalanceBefore + amountWon);
+    }
+
+    // --- Test: Only owner can withdraw interest ---
+    function testWithdrawOfIntrestOnlyOwner() public {
+        vm.prank(user1);
+        lottery.stake(40e6);
+        vm.prank(user2);
+        lottery.stake(1e6);
+        aEthLink.mint(address(lottery), 3e6);
+        vm.prank(owner);
+        lottery.withdrawInterest(owner);
+
+        assertEq(link.balanceOf(owner), 3e6);
+    }
+
+    // --- Test: Non-owner cannot withdraw interest ---
+    function testWithdrawOfIntrestOnlyOwnerFailsIfNotOwner() public {
+        vm.prank(user1);
+        lottery.stake(40e6);
+        vm.prank(user2);
+        lottery.stake(1e6);
+        vm.prank(user1);
+        vm.expectRevert("Only callable by owner");
+        lottery.withdrawInterest(user1);
+
+        assertEq(link.balanceOf(owner), 0);
+    }
+
+    // --- Test: Staking after entry cutoff time makes ticket eligible for next round ---
+    function testStakeAfterEntryCutoffGoesToNextRound() public {
+        uint256 initialRound = lottery.currentRound();
+        uint256 cutoff = lottery.lastTimeStamp() + lottery.interval() - lottery.entryCutoffTime();
+        vm.warp(cutoff + 1);
+        vm.prank(user1);
+        lottery.stake(1e6);
+        (address ticketUser, uint256 ticketAmount, uint256 startRound) = lottery.tickets(lottery.getTicketCount() - 1);
+        assertEq(ticketUser, user1);
+        assertEq(ticketAmount, 1e6);
+        assertEq(startRound, initialRound + 1);
+    }
+
+    // --- Test: Get request status after VRF fulfillment ---
+    function testGetRequestStatus() public {
+        vm.prank(user1);
+        lottery.stake(40e6);
+        vm.prank(user2);
+        lottery.stake(1e6);
+        aEthLink.mint(address(lottery), 3e6);
+        lottery.setCurrentRound(2);
+        vm.warp(block.timestamp + 2 days);
+        lottery.performUpkeep("");
+        uint256 requestId = 1;
+        vrfCoordinator.fulfillRandomWords(requestId, address(lottery));
+        (bool fulfilled, uint256[] memory randomWords) = lottery.getRequestStatus(requestId);
+        assertEq(fulfilled, true);
+        assertEq(randomWords.length, 1);
+    }
+
+    // --- Test: Get total staked after staking ---
+    function testGetTotalStaked() public {
+        vm.prank(user1);
+        lottery.stake(40e6);
+        vm.prank(user2);
+        lottery.stake(1e6);
+        assertEq(lottery.getTotalStaked(), 41e6);
+    }
+
+    // --- Test: Get user stakes after staking ---
+    function testGetUserStakes() public {
+        vm.prank(user1);
+        lottery.stake(40e6);
+        vm.prank(user2);
+        lottery.stake(1e6);
+        assertEq(lottery.getUserStakes(user1), 40e6);
+        assertEq(lottery.getUserStakes(user2), 1e6);
+    }
+
+    // --- Test: Get total yield generated after one round ---
+    function testGetTotalYieldGenerated() public {
+        vm.prank(user1);
+        lottery.stake(40e6);
+        vm.prank(user2);
+        lottery.stake(1e6);
+        aEthLink.mint(address(lottery), 3e6);
+        lottery.setCurrentRound(2);
+        vm.warp(block.timestamp + 2 days);
+        lottery.performUpkeep("");
+        uint256 requestId = 1;
+        vrfCoordinator.fulfillRandomWords(requestId, address(lottery));
+        assertEq(lottery.getTotalYieldGenerated(), 3e6);
+    }
+
+    // --- Test: Get total yield generated after multiple rounds ---
+    function testGetTotalYieldGenerated_MultipleRounds() public {
+        vm.prank(user1);
+        lottery.stake(40e6);
+        vm.prank(user2);
+        lottery.stake(1e6);
+
+        // Round 1
+        aEthLink.mint(address(lottery), 3e6);
+        lottery.setCurrentRound(2);
+        vm.warp(block.timestamp + 2 days);
+        lottery.performUpkeep("");
+        uint256 requestId1 = 1;
+        vrfCoordinator.fulfillRandomWords(requestId1, address(lottery));
+        assertEq(lottery.getTotalYieldGenerated(), 3e6);
+
+        // Round 2
+        aEthLink.mint(address(lottery), 2e6);
+        lottery.setCurrentRound(3);
+        vm.warp(block.timestamp + 2 days);
+        lottery.performUpkeep("");
+        uint256 requestId2 = 2;
+        vrfCoordinator.fulfillRandomWords(requestId2, address(lottery));
+        assertEq(lottery.getTotalYieldGenerated(), 5e6);
+
+        // Round 3
+        aEthLink.mint(address(lottery), 4e6);
+        lottery.setCurrentRound(4);
+        vm.warp(block.timestamp + 2 days);
+        lottery.performUpkeep("");
+        uint256 requestId3 = 3;
+        vrfCoordinator.fulfillRandomWords(requestId3, address(lottery));
+        assertEq(lottery.getTotalYieldGenerated(), 9e6);
+    }
+
+    // --- Test: Get time until next draw, including after time warp and upkeep ---
+    function testGetTimeUntilNextDraw() public {
+        vm.prank(user1);
+        lottery.stake(1e6);
+        assertEq(lottery.getTimeUntilNextDraw(), 1 days);
+        vm.warp(block.timestamp + 1 hours);
+        assertEq(lottery.getTimeUntilNextDraw(), 1 days - 1 hours);
+        vm.warp(block.timestamp + (1 days - 1 hours));
+        assertEq(lottery.getTimeUntilNextDraw(), 0);
+        lottery.setCurrentRound(2);
+        lottery.performUpkeep("");
+        assertEq(lottery.getTimeUntilNextDraw(), 1 days);
+    }
 }
