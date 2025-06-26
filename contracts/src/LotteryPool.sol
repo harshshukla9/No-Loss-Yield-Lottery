@@ -12,8 +12,12 @@ import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 /// @author Tebbo
 /// @notice This contract allows users to stake USDC into a lottery pool, where yield is generated via Aave and distributed to a randomly selected winner each round.
 /// @dev Integrates Chainlink VRF for randomness and Chainlink Automation for round management. Yield is generated using Aave protocol.
-contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, ReentrancyGuard, Pausable {
-    
+contract LotteryPool is
+    VRFConsumerBaseV2Plus,
+    AutomationCompatibleInterface,
+    ReentrancyGuard,
+    Pausable
+{
     ///////////////////////////////////
     ///           ERRORS            ///
     ///////////////////////////////////
@@ -34,21 +38,20 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
 
     // Chainlink VRF
     // VRFCoordinatorV2Interface public vrfCoordinator;
+    bool public selectWinner = false;
     bytes32 public keyHash;
     uint256 public subscriptionId;
     uint32 public callbackGasLimit = 1000000;
     uint16 public requestConfirmations = 3;
     uint32 public numWords = 1;
     uint256 public ticketPurchaseCost;
-    uint256 public entryCutoffTime = 1 days; // Time before the next round starts when no new tickets can be purchased for the current round but will be auto-compounded for the next round
+    uint256 public entryCutoffTime = 10; // Time before the next round starts when no new tickets can be purchased for the current round but will be auto-compounded for the next round
 
     // Chainlink Automation
     uint256 public lastTimeStamp;
     uint256 public interval;
 
     // Yield Protocol (Aave)
-    IERC20 public usdc;
-    IERC20 public aUsdc;
     IERC20 public link;
     IERC20 public aEthLink;
     address public aaveLendingPool;
@@ -59,7 +62,16 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
         uint256 amount;
         uint256 startRound; // The first round this ticket is eligible for
     }
+    
+    struct Winner {
+        address winner;
+        uint256 amount;
+        uint256 round;
+        uint256 timestamp;
+    }
+    
     Ticket[] public tickets;
+    Winner[] public pastWinners;
     mapping(address => uint256) public userStakes;
     uint256 public currentRound;
     uint256 public totalYieldGenerated;
@@ -70,9 +82,9 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     uint256 public constant BPS_DENOMINATOR = 10000;
 
     struct RequestStatus {
-    bool fulfilled; // whether the request has been successfully fulfilled
-    bool exists; // whether a requestId exists
-    uint256[] randomWords;
+        bool fulfilled; // whether the request has been successfully fulfilled
+        bool exists; // whether a requestId exists
+        uint256[] randomWords;
     }
     mapping(uint256 => RequestStatus)
         public s_requests; /* requestId --> requestStatus */
@@ -127,19 +139,17 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
         address _vrfCoordinator,
         bytes32 _keyHash,
         uint256 _subscriptionId,
-        // address _usdc,
         address _link,
         address _aaveLendingPool,
-        // address _aUsdc,
         address _aEthLink,
         uint256 _interval,
         uint256 _ticketPurchaseCost,
         address _platformFeeRecipient
-    )  VRFConsumerBaseV2Plus(_vrfCoordinator) {
+    ) VRFConsumerBaseV2Plus(_vrfCoordinator) {
         keyHash = _keyHash;
         subscriptionId = _subscriptionId;
         link = IERC20(_link);
-        aEthLink= IERC20(_aEthLink);
+        aEthLink = IERC20(_aEthLink);
         aaveLendingPool = _aaveLendingPool;
         interval = _interval;
         lastTimeStamp = block.timestamp;
@@ -171,13 +181,15 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
         if (block.timestamp < lastTimeStamp + interval - entryCutoffTime) {
             ticketStartRound = currentRound; // Eligible for this round
         } else {
-            ticketStartRound = currentRound + 1; // Eligible for the next round 
+            ticketStartRound = currentRound + 1; // Eligible for the next round
         }
 
         // allow multiple tickets to be purchased at once
         uint256 numTickets = amount / ticketPurchaseCost;
         for (uint256 i = 0; i < numTickets; i++) {
-            tickets.push(Ticket(msg.sender, ticketPurchaseCost, ticketStartRound));
+            tickets.push(
+                Ticket(msg.sender, ticketPurchaseCost, ticketStartRound)
+            );
         }
 
         link.transferFrom(msg.sender, address(this), amount);
@@ -185,8 +197,13 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
 
         link.approve(aaveLendingPool, amount);
         (bool success, ) = aaveLendingPool.call(
-            abi.encodeWithSignature("supply(address,uint256,address,uint16)", 
-            address(link), amount, address(this), 0)
+            abi.encodeWithSignature(
+                "supply(address,uint256,address,uint16)",
+                address(link),
+                amount,
+                address(this),
+                0
+            )
         );
         if (!success) revert Lottery_AaveDepositFailed();
 
@@ -198,30 +215,59 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     // / @param checkData Not used
     /// @return upkeepNeeded True if upkeep is needed, false otherwise
     /// @return performData Not used
-    function checkUpkeep(bytes calldata /*checkData*/) external view override returns (bool upkeepNeeded, bytes memory /*performData*/) {
-        if (forceUpkeep) { // for testing only
+    function checkUpkeep(
+        bytes calldata
+    ) external view override returns (bool upkeepNeeded, bytes memory) {
+        if (forceUpkeep) {
             return (true, bytes(""));
         }
-        upkeepNeeded = (block.timestamp - lastTimeStamp) >= interval;
+        bool timeForNewRound = (block.timestamp - lastTimeStamp) >= interval &&
+            tickets.length > 0;
+        bool readyToSelectWinner = selectWinner &&
+            lastRequestId != 0 &&
+            s_requests[lastRequestId].fulfilled;
+        upkeepNeeded = timeForNewRound || readyToSelectWinner;
         return (upkeepNeeded, bytes(""));
     }
 
     /// @notice Chainlink Automation: Triggers a new lottery round
     /// @dev Requests a random winner if the interval has passed
     // / @param performData Not used
-    function performUpkeep(bytes calldata /*performData*/) external override whenNotPaused {
-    if (!forceUpkeep) { /// for testing only
-        if ((block.timestamp - lastTimeStamp) < interval) revert Lottery_IntervalNotPassed();
-        if (tickets.length == 0) revert Lottery_NoTicketsInRound();
-    }
-        lastTimeStamp = block.timestamp;
-        requestRandomWinner();
+    function performUpkeep(bytes calldata) external override whenNotPaused {
+        // First check if we need to select a winner
+        if (
+            selectWinner &&
+            lastRequestId != 0 &&
+            s_requests[lastRequestId].fulfilled
+        ) {
+            // Winner selection logic
+            uint256[] memory randomWords = s_requests[lastRequestId]
+                .randomWords;
+            selectWinnerAndDistributeFunds(randomWords);
+            selectWinner = false;
+            lastTimeStamp = block.timestamp;
+            currentRound++;
+        }
+        // Then check if it's time for a new round (only if we're not already selecting a winner)
+        else if (
+            !selectWinner &&
+            (block.timestamp - lastTimeStamp) >= interval &&
+            tickets.length > 0
+        ) {
+            // Only request if we don't have a pending request
+            if (lastRequestId == 0 || s_requests[lastRequestId].fulfilled) {
+                // Time for new round: request randomness
+                requestRandomWords();
+                selectWinner = true; // Set flag so next upkeep will select winner
+            }
+        }
+        // If selectWinner is true but we don't have a fulfilled request yet, do nothing and wait
     }
 
     /// @notice Requests a random winner from Chainlink VRF
     /// @dev Internal function to request random words from Chainlink VRF
-    function requestRandomWinner() internal returns (uint256){
-         requestId = s_vrfCoordinator.requestRandomWords(
+    function requestRandomWords() internal returns (uint256) {
+        requestId = s_vrfCoordinator.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
                 keyHash: keyHash,
                 subId: subscriptionId,
@@ -229,11 +275,11 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
                 callbackGasLimit: callbackGasLimit,
                 numWords: numWords,
                 extraArgs: VRFV2PlusClient._argsToBytes(
-                VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
+                    VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
                 )
             })
         );
-            s_requests[requestId] = RequestStatus({
+        s_requests[requestId] = RequestStatus({
             randomWords: new uint256[](0),
             exists: true,
             fulfilled: false
@@ -248,12 +294,19 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
     /// @dev Called by Chainlink VRF with random words. Only tickets eligible for the current round are considered.
     /// @param  _requestId The request ID (unused)
     /// @param _randomWords The array of random words provided by Chainlink VRF
-    function fulfillRandomWords(uint256  _requestId, uint256[] calldata _randomWords) internal override {
+    function fulfillRandomWords(
+        uint256 _requestId,
+        uint256[] calldata _randomWords
+    ) internal override {
         require(s_requests[_requestId].exists, "request not found");
         s_requests[_requestId].fulfilled = true;
         s_requests[_requestId].randomWords = _randomWords;
         emit RequestFulfilled(_requestId, _randomWords);
-        // Collect indices of eligible tickets for this round
+    }
+
+    function selectWinnerAndDistributeFunds(
+        uint256[] memory _randomWords
+    ) internal {
         uint256 eligibleCount = 0;
         for (uint256 i = 0; i < tickets.length; i++) {
             if (tickets[i].startRound <= currentRound) {
@@ -312,21 +365,17 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
         );
         if (!winnerSuccess) revert Lottery_AaveWithdrawFailed();
 
+        // Store winner information
+        pastWinners.push(Winner({
+            winner: winner,
+            amount: winnerAmount,
+            round: currentRound,
+            timestamp: block.timestamp
+        }));
+
         emit WinnerSelected(winner, winnerAmount);
         emit AutoCompounded(totalStaked);
-
-        currentRound++; // Move to the next round
     }
-
-
-    function getRequestStatus(
-        uint256 _requestId
-    ) external view returns (bool fulfilled, uint256[] memory randomWords) {
-        require(s_requests[_requestId].exists, "request not found");
-        RequestStatus memory request = s_requests[_requestId];
-        return (request.fulfilled, request.randomWords);
-    }
-
 
     /// @notice Withdraws only the accrued interest (yield) from Aave to a specified address
     /// @dev Calculates interest as aUSDC balance minus total staked, then withdraws that amount
@@ -386,7 +435,6 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
             )
         );
         if (!success) revert Lottery_AaveWithdrawFailed();
-
     }
 
     /// @notice Allows a user to withdraw their principal in an emergency if the contract is paused
@@ -476,19 +524,197 @@ contract LotteryPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface, Re
         }
     }
 
-//// testing functions
+    function getUsersTicketsInCurrentRound(
+        address user
+    ) external view returns (uint256 count) {
+        for (uint256 i = 0; i < tickets.length; i++) {
+            if (
+                tickets[i].user == user && tickets[i].startRound <= currentRound
+            ) {
+                count++;
+            }
+        }
+    }
 
-function setCurrentRound(uint256 round) external onlyOwner{
-    currentRound = round;
-}
+    // Returns the number of tickets a user has for the next round
+    function getUsersTicketsForNextRound(
+        address user
+    ) external view returns (uint256 count) {
+        for (uint256 i = 0; i < tickets.length; i++) {
+            if (
+                tickets[i].user == user &&
+                tickets[i].startRound == currentRound + 1
+            ) {
+                count++;
+            }
+        }
+    }
 
-// test function to be removed in  production
-// to manually force a checkupkeep to be true
-function setCheckUpkeepToTrue(bool _force) external onlyOwner {
-    forceUpkeep = _force;
-}
+    function getTotalTicketsInCurrentRound()
+        external
+        view
+        returns (uint256 count)
+    {
+        for (uint256 i = 0; i < tickets.length; i++) {
+            if (tickets[i].startRound <= currentRound) {
+                count++;
+            }
+        }
+    }
 
-  function setCallbackGasLimit(uint32 _limit) external onlyOwner {
-      callbackGasLimit = _limit;
-  }
+    /// @notice Get the total number of past winners
+    /// @return The total number of winners
+    function getPastWinnersCount() external view returns (uint256) {
+        return pastWinners.length;
+    }
+
+    /// @notice Get winner information by index
+    /// @param index The index of the winner (0 is the first winner)
+    /// @return winner The address of the winner
+    /// @return amount The amount won
+    /// @return round The round number
+    /// @return timestamp The timestamp when they won
+    function getPastWinner(uint256 index) 
+        external 
+        view 
+        returns (address winner, uint256 amount, uint256 round, uint256 timestamp) 
+    {
+        require(index < pastWinners.length, "Winner index out of bounds");
+        Winner memory w = pastWinners[index];
+        return (w.winner, w.amount, w.round, w.timestamp);
+    }
+
+    /// @notice Get the most recent winner
+    /// @return winner The address of the most recent winner
+    /// @return amount The amount won
+    /// @return round The round number
+    /// @return timestamp The timestamp when they won
+    function getLatestWinner() 
+        external 
+        view 
+        returns (address winner, uint256 amount, uint256 round, uint256 timestamp) 
+    {
+        require(pastWinners.length > 0, "No winners yet");
+        Winner memory w = pastWinners[pastWinners.length - 1];
+        return (w.winner, w.amount, w.round, w.timestamp);
+    }
+
+    /// @notice Get all past winners (use with caution for large arrays)
+    /// @return An array of all winner structs
+    function getAllPastWinners() external view returns (Winner[] memory) {
+        return pastWinners;
+    }
+
+    /// @notice Get past winners within a specific round range
+    /// @param fromRound The starting round (inclusive)
+    /// @param toRound The ending round (inclusive)
+    /// @return winners Array of winners within the specified range
+    function getWinnersByRoundRange(uint256 fromRound, uint256 toRound) 
+        external 
+        view 
+        returns (Winner[] memory winners) 
+    {
+        require(fromRound <= toRound, "Invalid round range");
+        
+        // Count winners in range
+        uint256 count = 0;
+        for (uint256 i = 0; i < pastWinners.length; i++) {
+            if (pastWinners[i].round >= fromRound && pastWinners[i].round <= toRound) {
+                count++;
+            }
+        }
+        
+        // Create array and populate
+        winners = new Winner[](count);
+        uint256 index = 0;
+        for (uint256 i = 0; i < pastWinners.length; i++) {
+            if (pastWinners[i].round >= fromRound && pastWinners[i].round <= toRound) {
+                winners[index] = pastWinners[i];
+                index++;
+            }
+        }
+        
+        return winners;
+    }
+
+    //// testing functions to be removed in  production
+
+    function setCurrentRound(uint256 round) external onlyOwner {
+        currentRound = round;
+    }
+
+    function setCheckUpkeepToTrue(bool _force) external {
+        forceUpkeep = _force;
+    }
+
+    function setCallbackGasLimit(uint32 _limit) external onlyOwner {
+        callbackGasLimit = _limit;
+    }
+
+    function setRoundInterval(uint256 _interval) external {
+        interval = _interval;
+    }
+
+    function setEntryCutoffTime(uint256 _entryCutoffTime) external {
+        entryCutoffTime = _entryCutoffTime;
+    }
+
+    // Debug functions
+    function getSelectWinnerStatus() external view returns (bool) {
+        return selectWinner;
+    }
+
+    function getLastRequestInfo()
+        external
+        view
+        returns (uint256 requestId, bool fulfilled, bool exists)
+    {
+        return (
+            lastRequestId,
+            s_requests[lastRequestId].fulfilled,
+            s_requests[lastRequestId].exists
+        );
+    }
+
+    function debugPerformUpkeepConditions()
+        external
+        view
+        returns (
+            bool selectWinnerFlag,
+            bool hasLastRequestId,
+            bool isRequestFulfilled,
+            bool timeForNewRound,
+            uint256 ticketCount
+        )
+    {
+        selectWinnerFlag = selectWinner;
+        hasLastRequestId = lastRequestId != 0;
+        isRequestFulfilled =
+            lastRequestId != 0 &&
+            s_requests[lastRequestId].fulfilled;
+        timeForNewRound = (block.timestamp - lastTimeStamp) >= interval;
+        ticketCount = tickets.length;
+    }
+
+    // Manual trigger for debugging - only use in testing
+    function manualSelectWinner() external onlyOwner {
+        require(
+            lastRequestId != 0 && s_requests[lastRequestId].fulfilled,
+            "No fulfilled request"
+        );
+        uint256[] memory randomWords = s_requests[lastRequestId].randomWords;
+        selectWinnerAndDistributeFunds(randomWords);
+        selectWinner = false;
+        lastTimeStamp = block.timestamp;
+        currentRound++;
+    }
+
+    // testing function to get the request status
+    function getRequestStatus(
+        uint256 _requestId
+    ) external view returns (bool fulfilled, uint256[] memory randomWords) {
+        require(s_requests[_requestId].exists, "request not found");
+        RequestStatus memory request = s_requests[_requestId];
+        return (request.fulfilled, request.randomWords);
+    }
 }
