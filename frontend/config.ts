@@ -1,5 +1,5 @@
 export default {
-  contractAddress: "0xCB597E3C7aD8F8Fab28B8A2ce2042cBeD813F682",
+  contractAddress: "0x310D1095CBE32AEead3C17657Aa582387096FD52",
   abi: [
     {
         "type": "constructor",
