@@ -6,7 +6,7 @@ const RoundInfo = () => {
   const {
     currentRound,
     totalStakedUSD,
-    ticketCount,
+    totalTicketsInCurrentRound,
     isLoadingPrice,
     entryCutoffTime,
   } = useLottery();
@@ -46,8 +46,12 @@ const RoundInfo = () => {
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-600">Total Tickets:</span>
-            <span className="font-medium">{ticketCount.data?.toString()}</span>
+            <span className="text-slate-600">
+              Total Tickets In Current Round :
+            </span>
+            <span className="font-medium">
+              {totalTicketsInCurrentRound.data?.toString()}
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">Entry Cutoff:</span>
