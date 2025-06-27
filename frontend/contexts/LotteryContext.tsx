@@ -12,15 +12,24 @@ import { useReadContract, useAccount } from "wagmi";
 import { UseReadContractReturnType } from "wagmi";
 import { formatUnits } from "viem";
 
+type Winner = {
+  winner: `0x${string}`;
+  amount: number;
+  round: number;
+  timestamp: number;
+};
+
 interface LotteryContextType {
   userAddress: `0x${string}` | undefined;
   isConnected: boolean;
   totalStaked: UseReadContractReturnType;
   ticketCount: UseReadContractReturnType;
+  totalTicketsInCurrentRound: UseReadContractReturnType;
   totalYieldGenerated: UseReadContractReturnType;
   ticketPurchaseCost: UseReadContractReturnType;
   userStakes: UseReadContractReturnType;
   currentRound: UseReadContractReturnType;
+  recentWinners: Winner[];
   userTickets: number;
   userWinRate: number;
   totalStakedUSD: string | number;
@@ -35,9 +44,27 @@ export function LotteryProvider({ children }: { children: ReactNode }) {
   const [userAddress, setUserAddress] = useState<`0x${string}` | undefined>(
     undefined
   );
+  const [recentWinners, setRecentWinners] = useState<Winner[]>([]);
+  const [currentRoundState, setCurrentRoundState] = useState<number>(0);
   const [linkPrice, setLinkPrice] = useState<number>(0);
   const [isLoadingPrice, setIsLoadingPrice] = useState<boolean>(false);
   const { address, isConnected } = useAccount();
+
+  const currentRound = useReadContract({
+    address: config.contractAddress as `0x${string}`,
+    abi: config.abi,
+    functionName: "currentRound",
+  });
+
+  const getRecentWinners = useReadContract({
+    address: config.contractAddress as `0x${string}`,
+    abi: config.abi,
+    functionName: "getWinnersByRoundRange",
+    args: [currentRoundState - 5, currentRoundState],
+    query: {
+      enabled: !!currentRoundState,
+    },
+  });
 
   useEffect(() => {
     if (isConnected) {
@@ -46,6 +73,24 @@ export function LotteryProvider({ children }: { children: ReactNode }) {
       setUserAddress(undefined);
     }
   }, [isConnected, address]);
+
+  useEffect(() => {
+    if (currentRound.data) {
+      setCurrentRoundState(Number(currentRound.data));
+    }
+  }, [currentRound.data]);
+
+  useEffect(() => {
+    if (getRecentWinners.data) {
+      const winners = getRecentWinners.data as Winner[];
+      for (const winner of winners) {
+        const winningAmount = formatUnits(BigInt(winner.amount), 18);
+        const winningAmountUSD = (Number(winningAmount) * linkPrice).toFixed(5);
+        winner.amount = Number(winningAmountUSD);
+      }
+      setRecentWinners(winners);
+    }
+  }, [getRecentWinners.data, currentRoundState, linkPrice]);
 
   useEffect(() => {
     const fetchLinkPrice = async () => {
@@ -77,6 +122,22 @@ export function LotteryProvider({ children }: { children: ReactNode }) {
     functionName: "getTotalStaked",
   });
 
+  const totalTicketsInCurrentRound = useReadContract({
+    address: config.contractAddress as `0x${string}`,
+    abi: config.abi,
+    functionName: "getTotalTicketsInCurrentRound",
+  });
+
+  const totalUserTicketsInCurrentRound = useReadContract({
+    address: config.contractAddress as `0x${string}`,
+    abi: config.abi,
+    functionName: "getTotalUserTicketsInCurrentRound",
+    args: [userAddress || "0x0000000000000000000000000000000000000000"],
+    query: {
+      enabled: !!userAddress,
+    },
+  });
+
   const timeUntilNextDraw = useReadContract({
     address: config.contractAddress as `0x${string}`,
     abi: config.abi,
@@ -101,12 +162,6 @@ export function LotteryProvider({ children }: { children: ReactNode }) {
     functionName: "ticketPurchaseCost",
   });
 
-  const currentRound = useReadContract({
-    address: config.contractAddress as `0x${string}`,
-    abi: config.abi,
-    functionName: "currentRound",
-  });
-
   const userStakes = useReadContract({
     address: config.contractAddress as `0x${string}`,
     abi: config.abi,
@@ -127,12 +182,16 @@ export function LotteryProvider({ children }: { children: ReactNode }) {
   }, [userStakes.data, ticketPurchaseCost.data]);
 
   const userWinRate = React.useMemo(() => {
-    if (userTickets > 0 && ticketCount.data) {
-      const totalTickets = Number(ticketCount.data as bigint);
+    if (
+      totalUserTicketsInCurrentRound.data &&
+      totalTicketsInCurrentRound.data
+    ) {
+      const totalTickets = Number(totalTicketsInCurrentRound.data as bigint);
+      const userTickets = Number(totalUserTicketsInCurrentRound.data as bigint);
       return totalTickets > 0 ? (userTickets / totalTickets) * 100 : 0;
     }
     return 0;
-  }, [userTickets, ticketCount.data]);
+  }, [totalUserTicketsInCurrentRound.data, totalTicketsInCurrentRound.data]);
 
   const entryCutoffTime = React.useMemo(() => {
     if (timeUntilNextDraw.data) {
@@ -166,10 +225,12 @@ export function LotteryProvider({ children }: { children: ReactNode }) {
         isConnected,
         totalStaked,
         ticketCount,
+        totalTicketsInCurrentRound,
         totalYieldGenerated,
         userTickets,
         userStakes,
         ticketPurchaseCost,
+        recentWinners,
         userWinRate,
         currentRound,
         totalStakedUSD,
