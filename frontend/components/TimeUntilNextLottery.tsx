@@ -49,7 +49,7 @@ const TimeUntilNextLottery = () => {
       : formatTime(seconds || 0);
 
   return (
-    <div className="inline-flex items-center gap-2 bg-blue-500/20 backdrop-blur-sm px-4 py-2 rounded-full border border-blue-500/30 mb-6">
+    <div className="inline-flex items-center gap-2 bg-blue-500/20 backdrop-blur-sm px-4 py-2 rounded-full border border-blue-500/30">
       <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
       <span className="text-sm font-medium">
         {isLoading ? "Loading..." : error ? "Error" : formattedTime}

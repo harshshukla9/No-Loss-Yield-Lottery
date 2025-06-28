@@ -15,8 +15,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "No Loss Lottery",
+  title: "NoLo",
   description: "No Loss Lottery",
+  icons: {
+    icon: "./favicon.ico",
+  },
 };
 
 export default function RootLayout({
