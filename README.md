@@ -21,7 +21,7 @@ A decentralized, no-loss lottery smart contract built on Ethereum that combines 
 
 ### 1. **Ticket Purchase & Staking**
    - Call `stake(uint256 amount)` to deposit LINK tokens
-   - Minimum stake: 1 LINK = 1 ticket
+   - Minimum stake: 5 LINK = 1 ticket
    - Multiple tickets increase your winning probability
    - Stakes made after entry cutoff time are eligible for the next round
 
@@ -202,7 +202,7 @@ npm run dev
 ## 📈 Economics
 
 ### Ticket Pricing
-- **Cost:** 1 LINK = 1 Ticket
+- **Cost:** 5 LINK = 1 Ticket
 - **Multiple Tickets:** Allowed for increased win probability
 - **Entry Cutoff:** 10 seconds before round end (configurable)
 
@@ -223,7 +223,7 @@ npm run dev
 The contract includes several configurable parameters:
 
 - `interval`: Time between lottery rounds
-- `ticketPurchaseCost`: Cost per ticket (1 LINK)
+- `ticketPurchaseCost`: Cost per ticket (5 LINK)
 - `entryCutoffTime`: Seconds before round end to stop entries
 - `FEE_BPS`: Platform fee in basis points (100 = 1%)
 
