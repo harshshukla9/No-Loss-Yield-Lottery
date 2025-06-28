@@ -137,7 +137,7 @@ export function LotteryProvider({ children }: { children: ReactNode }) {
   const totalUserTicketsInCurrentRound = useReadContract({
     address: config.contractAddress as `0x${string}`,
     abi: config.abi,
-    functionName: "getTotalUserTicketsInCurrentRound",
+    functionName: "getUsersTicketsInCurrentRound",
     args: [userAddress || "0x0000000000000000000000000000000000000000"],
     query: {
       enabled: !!userAddress,
