@@ -27,7 +27,6 @@ const TimeUntilNextLottery = () => {
 
   const formatTime = (totalSeconds: number): string => {
     const duration = intervalToDuration({ start: 0, end: totalSeconds * 1000 });
-    const days = duration.days || 0;
     const hours = duration.hours || 0;
     const minutes = duration.minutes || 0;
     const seconds = duration.seconds || 0;
@@ -36,7 +35,6 @@ const TimeUntilNextLottery = () => {
       `${count} ${noun}${count !== 1 ? "s" : ""}`;
 
     return [
-      pluralize(days, "day"),
       pluralize(hours, "hour"),
       pluralize(minutes, "minute"),
       pluralize(seconds, "second"),
