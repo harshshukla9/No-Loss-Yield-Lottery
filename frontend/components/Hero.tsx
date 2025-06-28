@@ -88,7 +88,7 @@ const Hero = () => {
             <TimeUntilNextLottery />
           </div>
           <h1
-            className={`text-[7rem] font-bold text-black sm:text-8xl drop-shadow-[5px_5px_5px_rgba(0,0,0,0.5)] ${instrumentSerif.className}`}
+            className={`text-[4rem] font-bold text-black sm:text-8xl drop-shadow-[5px_5px_5px_rgba(0,0,0,0.5)] ${instrumentSerif.className}`}
           >
             Don't YOLO. <span>Just NoLo</span>
           </h1>
@@ -106,7 +106,7 @@ const Hero = () => {
               Enter Lottery
             </Link>
             <a
-              href="https://github.com/eik-1/No-Loss-Yield-Lottery"
+              href="https://sepolia.etherscan.io/address/0x310D1095CBE32AEead3C17657Aa582387096FD52#code"
               target="_blank"
               rel="noopener noreferrer"
               className="text-base font-semibold leading-7 text-black group hover:text-black/80 drop-shadow-[5px_5px_5px_rgba(0,0,0,0.5)]"
@@ -123,7 +123,7 @@ const Hero = () => {
         </div>
 
         {/* Stats Section */}
-        <div className="mt-20">
+        <div className="mt-20 md:block hidden">
           <div className="mx-auto max-w-4xl">
             <div className="grid grid-cols-1 gap-px bg-slate-900/5 sm:grid-cols-3 rounded-2xl overflow-hidden shadow-lg ring-1 ring-slate-900/5">
               {stats.map((stat) => (
