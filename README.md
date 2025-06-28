@@ -44,7 +44,7 @@ A decentralized, no-loss lottery smart contract built on Ethereum. Users stake L
 
 ### Chainlink Automation (Keepers)
 - **Where:**  
-  - [`checkUpkeep`](https://github.com/leetebbs/No-Loss-Yield-Lottery/blob/main/contracts/src/LotteryPool.sol#L196) and [`performUpkeep`](https://github.com/leetebbs/No-Loss-Yield-Lottery/blob/main/contracts/src/LotteryPool.sol#L209) functions in the contract.
+  - [`checkUpkeep`](https://github.com/leetebbs/No-Loss-Yield-Lottery/blob/main/contracts/src/LotteryPool.sol#L218) and [`performUpkeep`](https://github.com/leetebbs/No-Loss-Yield-Lottery/blob/main/contracts/src/LotteryPool.sol#L236) functions in the contract.
 - **What:**  
   - Automates the process of starting new rounds and requesting randomness for winner selection.
 - **How:**  
@@ -53,7 +53,7 @@ A decentralized, no-loss lottery smart contract built on Ethereum. Users stake L
 
 ### Chainlink VRF
 - **Where:**  
-  - [`requestRandomWinner`](https://github.com/leetebbs/No-Loss-Yield-Lottery/blob/main/contracts/src/LotteryPool.sol#L221) and [`fulfillRandomWords`](https://github.com/leetebbs/No-Loss-Yield-Lottery/blob/main/contracts/src/LotteryPool.sol#L247) functions in the contract.
+  - [`requestRandomWords`](https://github.com/leetebbs/No-Loss-Yield-Lottery/blob/main/contracts/src/LotteryPool.sol#L269) and [`fulfillRandomWords`](https://github.com/leetebbs/No-Loss-Yield-Lottery/blob/main/contracts/src/LotteryPool.sol#L297) functions in the contract.
 - **What:**  
   - Provides a secure, verifiable random number to select the lottery winner.
 - **How:**  
