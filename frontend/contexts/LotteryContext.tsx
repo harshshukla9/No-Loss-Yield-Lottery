@@ -82,13 +82,19 @@ export function LotteryProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (getRecentWinners.data) {
-      const winners = getRecentWinners.data as Winner[];
-      for (const winner of winners) {
-        const winningAmount = formatUnits(BigInt(winner.amount), 18);
-        const winningAmountUSD = (Number(winningAmount) * linkPrice).toFixed(5);
-        winner.amount = Number(winningAmountUSD);
-      }
-      setRecentWinners(winners);
+      const processedWinners = (getRecentWinners.data as any[]).map(
+        (winner) => {
+          const winningAmount = formatUnits(winner.amount, 18);
+          const winningAmountUSD = (Number(winningAmount) * linkPrice).toFixed(
+            5
+          );
+          return {
+            ...winner,
+            amount: Number(winningAmountUSD),
+          };
+        }
+      );
+      setRecentWinners(processedWinners as Winner[]);
     }
   }, [getRecentWinners.data, currentRoundState, linkPrice]);
 

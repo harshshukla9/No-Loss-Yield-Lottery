@@ -4,7 +4,7 @@ import "@rainbow-me/rainbowkit/styles.css";
 import type React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
-import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
+import { lightTheme, RainbowKitProvider } from "@rainbow-me/rainbowkit";
 import { LotteryProvider } from "@/contexts/LotteryContext";
 
 import { config } from "../wagmi";
@@ -15,7 +15,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider>
+        <RainbowKitProvider
+          theme={lightTheme({
+            accentColor: "#000000",
+            accentColorForeground: "white",
+            borderRadius: "large",
+            fontStack: "system",
+            overlayBlur: "large",
+          })}
+        >
           <LotteryProvider>{children}</LotteryProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
