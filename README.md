@@ -1,6 +1,6 @@
 # NoLo Lotto - No-Loss Yield Lottery Pool
 
-A decentralized, no-loss lottery smart contract built on Ethereum that combines DeFi yield farming with lottery mechanics. Users stake LINK tokens, which are deposited into Aave to earn yield. At the end of each round, the yield generated is awarded to a randomly selected winner, while all users retain their original staked amount. The lottery is fully automated using Chainlink VRF for randomness and Chainlink Automation for round management.
+A decentralized, no-loss lottery smart contract built on Ethereum that combines DeFi yield farming with lottery mechanics. Users purchase tickets with LINK tokens, which are deposited into Aave to earn yield. At the end of each round, the yield generated is awarded to a randomly selected winner, while all users retain their original staked amount. The lottery is fully automated using Chainlink VRF for randomness and Chainlink Automation for round management.
 
 ---
 
