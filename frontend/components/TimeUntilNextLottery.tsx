@@ -1,7 +1,7 @@
 "use client";
 
 import { useFetchTimeUntilNextDraw } from "@/hooks/fetchTimeUntilNextDraw";
-import { formatDuration, intervalToDuration } from "date-fns";
+import { intervalToDuration } from "date-fns";
 import { useEffect, useState } from "react";
 
 const TimeUntilNextLottery = () => {
@@ -27,10 +27,20 @@ const TimeUntilNextLottery = () => {
 
   const formatTime = (totalSeconds: number): string => {
     const duration = intervalToDuration({ start: 0, end: totalSeconds * 1000 });
-    return formatDuration(duration, {
-      format: ["days", "hours", "minutes", "seconds"],
-      delimiter: ", ",
-    });
+    const days = duration.days || 0;
+    const hours = duration.hours || 0;
+    const minutes = duration.minutes || 0;
+    const seconds = duration.seconds || 0;
+
+    const pluralize = (count: number, noun: string) =>
+      `${count} ${noun}${count !== 1 ? "s" : ""}`;
+
+    return [
+      pluralize(days, "day"),
+      pluralize(hours, "hour"),
+      pluralize(minutes, "minute"),
+      pluralize(seconds, "second"),
+    ].join(", ");
   };
 
   const formattedTime =
