@@ -201,7 +201,7 @@ export function LotteryProvider({ children }: { children: ReactNode }) {
 
   const entryCutoffTime = React.useMemo(() => {
     if (timeUntilNextDraw.data) {
-      const cutoffTime: number = 86400;
+      const cutoffTime: number = 3600;
       const timeLeft = Number(timeUntilNextDraw.data as bigint);
 
       if (cutoffTime > timeLeft) {
