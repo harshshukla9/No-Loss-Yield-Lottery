@@ -136,8 +136,8 @@ lotto/
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
-   cd lotto
+   git clone https://github.com/leetebbs/No-Loss-Yield-Lottery
+   cd No-Loss-Yield-Lottery
    ```
 
 2. **Install contract dependencies**
